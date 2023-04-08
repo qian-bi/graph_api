@@ -38,7 +38,7 @@ def main():
             if item['name'] == 'Public':
                 for d in api.get_drive_item(drive, item['id']):
                     res = requests.get(d['@microsoft.graph.downloadUrl'])
-                    with open(photo_path / {d["name"]}, 'wb') as f:
+                    with open(photo_path / d["name"], 'wb') as f:
                         f.write(res.content)
         api.send_mail(
             e5_id, {
