@@ -37,8 +37,8 @@ jobs:
         flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
     - name: run
       env:
-        client_id: ${{ CLIENT_ID }}
-        tenant_id: ${{ TENANT_ID }}
+        client_id: ${{ env.CLIENT_ID }}
+        tenant_id: ${{ env.TENANT_ID }}
         secret: ${{ secrets.SECRET }}
       run: |
         python main.py
