@@ -5,9 +5,9 @@ from graph import GraphAPI
 
 if __name__ == '__main__':
     config = {
-        'client_id': os.getenv('client_id'),
-        'tenant_id': os.getenv('tenant_id'),
-        'secret': os.getenv('secret'),
+        'client_id': os.getenv('CLIENT_ID'),
+        'tenant_id': os.getenv('TENANT_ID'),
+        'secret': os.getenv('SECRET'),
     }
     api = GraphAPI(config)
     users = api.get_users()
