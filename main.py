@@ -1,10 +1,11 @@
 import os
 import requests
+from pathlib import Path
 
 from graph import GraphAPI
 
-if __name__ == '__main__':
-    print(os.environ)
+
+def main():
     config = {
         'client_id': os.getenv('client_id'),
         'tenant_id': os.getenv('tenant_id'),
@@ -15,6 +16,8 @@ if __name__ == '__main__':
     api = GraphAPI(config)
     users = api.get_users()
     e5_id = ''
+    photo_path = Path(__file__).parent / 'photo'
+    photo_path.mkdir(exist_ok=True)
     recipients = []
     for u in users:
         print(u['displayName'])
@@ -23,7 +26,7 @@ if __name__ == '__main__':
         recipients.append({"emailAddress": {"address": u['mail']}})
         try:
             photo = api.get_user_photo(u['id'])
-            with open(f'photos/{u["displayName"]}.jpg', 'wb') as f:
+            with open(photo_path / f'{u["displayName"]}.jpg', 'wb') as f:
                 f.write(photo)
         except Exception as e:
             print(e)
@@ -35,7 +38,7 @@ if __name__ == '__main__':
             if item['name'] == 'Public':
                 for d in api.get_drive_item(drive, item['id']):
                     res = requests.get(d['@microsoft.graph.downloadUrl'])
-                    with open(f'photos/{d["name"]}', 'wb') as f:
+                    with open(photo_path / {d["name"]}, 'wb') as f:
                         f.write(res.content)
         api.send_mail(
             e5_id, {
@@ -53,3 +56,7 @@ if __name__ == '__main__':
                     }]
                 }
             })
+
+
+if __name__ == '__main__':
+    main()
