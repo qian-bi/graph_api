@@ -10,9 +10,6 @@ on:
     branches: [ "main" ]
   workflow_dispatch:
 
-permissions:
-  contents: read
-
 jobs:
   build:
 
@@ -37,8 +34,8 @@ jobs:
         flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
     - name: run
       env:
-        client_id: ${{ env.CLIENT_ID }}
-        tenant_id: ${{ env.TENANT_ID }}
+        client_id: ${{ secrets.CLIENT_ID }}
+        tenant_id: ${{ secrets.TENANT_ID }}
         secret: ${{ secrets.SECRET }}
       run: |
         python main.py
