@@ -4,11 +4,14 @@ import requests
 from graph import GraphAPI
 
 if __name__ == '__main__':
+    print(os.environ)
     config = {
         'client_id': os.getenv('CLIENT_ID'),
         'tenant_id': os.getenv('TENANT_ID'),
         'secret': os.getenv('SECRET'),
     }
+    if config['client_id'] == '' or config['tenant_id'] == '' or config['secret'] == '':
+        raise ValueError('config error')
     api = GraphAPI(config)
     users = api.get_users()
     e5_id = ''
