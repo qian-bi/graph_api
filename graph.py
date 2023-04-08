@@ -18,7 +18,7 @@ class GraphAPI:
     }
 
     def __init__(self, config: SectionProxy):
-        self.scope = config['scope']
+        self.scope = ["https://graph.microsoft.com/.default"]
         self._app = msal.ConfidentialClientApplication(
             config["client_id"],
             authority=self._API['authority'].format(tenant_id=config['tenant_id']),
