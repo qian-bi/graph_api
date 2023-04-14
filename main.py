@@ -23,11 +23,11 @@ def main():
         print(u['displayName'])
         if u['displayName'] == 'e5 renew':
             e5_id = u['id']
-        recipients.append({"emailAddress": {"address": u['mail']}})
         try:
             photo = api.get_user_photo(u['id'])
             with open(photo_path / f'{u["displayName"]}.jpg', 'wb') as f:
                 f.write(photo)
+            recipients.append({"emailAddress": {"address": u['mail']}})
         except Exception as e:
             print(e)
     if e5_id != '':
