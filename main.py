@@ -1,6 +1,7 @@
 import os
+from datetime import datetime
+
 import requests
-from pathlib import Path
 
 from graph import GraphAPI
 
@@ -10,23 +11,24 @@ def main():
         'client_id': os.getenv('client_id'),
         'tenant_id': os.getenv('tenant_id'),
         'secret': os.getenv('secret'),
+        'user_id': os.getenv('user_id'),
     }
-    if config['client_id'] == '' or config['tenant_id'] == '' or config['secret'] == '':
-        raise ValueError('config error')
+    for v in config.values():
+        if not v:
+            raise ValueError('config error')
     api = GraphAPI(config)
     users = api.get_users()
     e5_id = ''
-    photo_path = Path(__file__).parent / 'photo'
-    photo_path.mkdir(exist_ok=True)
     recipients = []
+    user_drive = api.get_drive(config['user_id'])
     for u in users:
         print(u['displayName'])
         if u['displayName'] == 'e5 renew':
             e5_id = u['id']
         try:
             photo = api.get_user_photo(u['id'])
-            with open(photo_path / f'{u["displayName"]}.jpg', 'wb') as f:
-                f.write(photo)
+            file_path = datetime.now().strftime('root:/%Y/%m/%d/%H-%M-%S-%f.png:')
+            api.upload_file('application/jpg', photo, drive_id=user_drive, file_path=file_path)
             recipients.append({"emailAddress": {"address": u['mail']}})
         except Exception as e:
             print(e)
@@ -37,9 +39,10 @@ def main():
         for item in items:
             if item['name'] == 'Public':
                 for d in api.get_drive_item(drive, item['id']):
+                    print(d['name'])
                     res = requests.get(d['@microsoft.graph.downloadUrl'])
-                    with open(photo_path / d["name"], 'wb') as f:
-                        f.write(res.content)
+                    file_path = datetime.now().strftime('root:/%Y/%m/%d/%H-%M-%S-%f.png:')
+                    api.upload_file('application/png', res.content, drive_id=user_drive, file_path=file_path)
         api.send_mail(
             e5_id, {
                 "message": {
@@ -49,11 +52,6 @@ def main():
                         "content": "test"
                     },
                     "toRecipients": recipients,
-                    "ccRecipients": [{
-                        "emailAddress": {
-                            "address": "qianbi@x1690.onmicrosoft.com"
-                        }
-                    }]
                 }
             })
 
