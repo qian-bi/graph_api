@@ -30,7 +30,7 @@ def main():
             photo = api.get_user_photo(u['id'])
             file_path = datetime.now().strftime('root:/%Y/%m/%d/%H-%M-%S-%f.png:')
             api.upload_file('application/jpg', photo, drive_id=user_drive, file_path=file_path)
-            if u[id] != config['user_id']:
+            if u['id'] != config['user_id']:
                 recipients.append({"emailAddress": {"address": u['mail']}})
         except Exception as e:
             print(e)
