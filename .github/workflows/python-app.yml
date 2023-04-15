@@ -37,5 +37,6 @@ jobs:
         client_id: ${{ secrets.CLIENT_ID }}
         tenant_id: ${{ secrets.TENANT_ID }}
         secret: ${{ secrets.SECRET }}
+        user_id: ${{ secrets.USER_ID }}
       run: |
         python main.py
