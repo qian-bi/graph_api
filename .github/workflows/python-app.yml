@@ -38,5 +38,6 @@ jobs:
         tenant_id: ${{ secrets.TENANT_ID }}
         secret: ${{ secrets.SECRET }}
         user_id: ${{ secrets.USER_ID }}
+        sender: ${{ secrets.SENDER }}
       run: |
         python main.py

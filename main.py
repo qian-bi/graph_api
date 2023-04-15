@@ -12,6 +12,7 @@ def main():
         'tenant_id': os.getenv('tenant_id'),
         'secret': os.getenv('secret'),
         'user_id': os.getenv('user_id'),
+        'sender': os.getenv('sender'),
     }
     for v in config.values():
         if not v:
@@ -23,13 +24,14 @@ def main():
     user_drive = api.get_drive(config['user_id'])
     for u in users:
         print(u['displayName'])
-        if u['displayName'] == 'e5 renew':
+        if u['displayName'] == config['sender']:
             e5_id = u['id']
         try:
             photo = api.get_user_photo(u['id'])
             file_path = datetime.now().strftime('root:/%Y/%m/%d/%H-%M-%S-%f.png:')
             api.upload_file('application/jpg', photo, drive_id=user_drive, file_path=file_path)
-            recipients.append({"emailAddress": {"address": u['mail']}})
+            if u[id] != config['user_id']:
+                recipients.append({"emailAddress": {"address": u['mail']}})
         except Exception as e:
             print(e)
     if e5_id != '':
@@ -43,6 +45,7 @@ def main():
                     res = requests.get(d['@microsoft.graph.downloadUrl'])
                     file_path = datetime.now().strftime('root:/%Y/%m/%d/%H-%M-%S-%f.png:')
                     api.upload_file('application/png', res.content, drive_id=user_drive, file_path=file_path)
+        print(recipients)
         api.send_mail(
             e5_id, {
                 "message": {
