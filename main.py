@@ -1,9 +1,74 @@
 import os
 from datetime import datetime
+from pathlib import Path
+from typing import List
 
 import requests
 
 from graph import GraphAPI
+
+CONTENT_TYPE = 'application/jpg'
+FILE_PATH_FOAMAT = 'root:/%Y/%m/%d/%H-%M-%S-%f.png:'
+TMP = Path(__file__).parent / 'tmp'
+TMP.mkdir(exist_ok=True)
+
+
+def get_users(api: GraphAPI):
+    users = api.get_users()
+    for u in users:
+        print('user_name', u['displayName'])
+        try:
+            photo = api.get_user_photo(u['id'])
+            with open(TMP / f'{u["displayName"]}.png', 'wb') as f:
+                f.write(photo)
+        except Exception as e:
+            print(e)
+
+
+def get_groups(api: GraphAPI, user_id: str):
+    groups = api.get_groups()
+    for g in groups:
+        print('group_name', g['displayName'])
+        send_mail(api, user_id, [g['mail']])
+        members = api.get_group_member(g['id'])
+        send_mail(api, user_id, [m['mail'] for m in members])
+
+
+def download_files(api: GraphAPI, user_id: str):
+    drive = api.get_drive(user_id)
+    print('drive_id', drive)
+    items = api.get_drive_item(drive)
+    for item in items:
+        if item['name'] == 'Public':
+            for d in api.get_drive_item(drive, item['id']):
+                print('file_name', d['name'])
+                res = requests.get(d['@microsoft.graph.downloadUrl'])
+                with open(TMP / d["name"], 'wb') as f:
+                    f.write(res.content)
+
+
+def upload_files(api: GraphAPI, user_id: str):
+    drive = api.get_drive(user_id)
+    for p in TMP.glob('*.png'):
+        file_path = datetime.now().strftime(FILE_PATH_FOAMAT)
+        with open(p, 'rb') as f:
+            api.upload_file(CONTENT_TYPE, f.read(), drive_id=drive, file_path=file_path)
+
+
+def send_mail(api: GraphAPI, sender: str, to: List[str]):
+    print('recipients', to)
+    recipients = [{"emailAddress": {"address": a}} for a in to]
+    api.send_mail(
+        sender, {
+            "message": {
+                "subject": "api test",
+                "body": {
+                    "contentType": "Text",
+                    "content": "test"
+                },
+                "toRecipients": recipients,
+            }
+        })
 
 
 def main():
@@ -12,51 +77,15 @@ def main():
         'tenant_id': os.getenv('tenant_id'),
         'secret': os.getenv('secret'),
         'user_id': os.getenv('user_id'),
-        'sender': os.getenv('sender'),
     }
     for v in config.values():
         if not v:
             raise ValueError('config error')
     api = GraphAPI(config)
-    users = api.get_users()
-    e5_id = ''
-    recipients = []
-    user_drive = api.get_drive(config['user_id'])
-    for u in users:
-        print(u['displayName'])
-        if u['displayName'] == config['sender']:
-            e5_id = u['id']
-        try:
-            photo = api.get_user_photo(u['id'])
-            file_path = datetime.now().strftime('root:/%Y/%m/%d/%H-%M-%S-%f.png:')
-            api.upload_file('application/jpg', photo, drive_id=user_drive, file_path=file_path)
-            if u['id'] != config['user_id']:
-                recipients.append({"emailAddress": {"address": u['mail']}})
-        except Exception as e:
-            print(e)
-    if e5_id != '':
-        drive = api.get_drive(e5_id)
-        print(drive)
-        items = api.get_drive_item(drive)
-        for item in items:
-            if item['name'] == 'Public':
-                for d in api.get_drive_item(drive, item['id']):
-                    print(d['name'])
-                    res = requests.get(d['@microsoft.graph.downloadUrl'])
-                    file_path = datetime.now().strftime('root:/%Y/%m/%d/%H-%M-%S-%f.png:')
-                    api.upload_file('application/png', res.content, drive_id=user_drive, file_path=file_path)
-        print(recipients)
-        api.send_mail(
-            e5_id, {
-                "message": {
-                    "subject": "api test",
-                    "body": {
-                        "contentType": "Text",
-                        "content": "test"
-                    },
-                    "toRecipients": recipients,
-                }
-            })
+    get_users(api)
+    get_groups(api, config['user_id'])
+    download_files(api, config['user_id'])
+    upload_files(api, config['user_id'])
 
 
 if __name__ == '__main__':

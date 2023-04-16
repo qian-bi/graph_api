@@ -18,6 +18,11 @@ class API:
 class APIEnum(Enum):
     authority = API('authority', '{host}/{tenant_id}', host='https://login.microsoftonline.com')
     users = API('users', '{host}/users')
+    user = API('user', '{host}/users/{user_id}')
+    groups = API('users', '{host}/groups')
+    group = API('user', '{host}/groups/{group_id}')
+    group_member = API('user', '{host}/groups/{group_id}/members')
+    group_owner = API('user', '{host}/groups/{group_id}/owners')
     photo = API('photo', '{host}/users/{user_id}/photo/$value')
     drive = API('drive', '{host}/drives/{drive_id}')
     user_drive = API('user_drive', '{host}/users/{user_id}/drive')
@@ -75,11 +80,24 @@ class GraphAPI:
             return json.loads(res.content)
         return res.content
 
-    def get_users(self):
+    def get_users(self, user_id: str = ''):
+        if user_id:
+            return self._request_graph(APIEnum.user, user_id=user_id)
         return self._request_graph(APIEnum.users)['value']
 
     def get_user_photo(self, user_id: str):
         return self._request_graph(APIEnum.photo, user_id=user_id)
+
+    def get_groups(self, group_id: str = ''):
+        if group_id:
+            return self._request_graph(APIEnum.group, group_id=group_id)
+        return self._request_graph(APIEnum.groups)['value']
+
+    def get_group_member(self, group_id: str):
+        return self._request_graph(APIEnum.group_member, group_id=group_id)['value']
+
+    def get_group_owner(self, group_id: str):
+        return self._request_graph(APIEnum.group_owner, group_id=group_id)['value']
 
     def get_drive(self, user_id: str = '', drive_id: str = ''):
         if user_id != '':
