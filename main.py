@@ -7,8 +7,7 @@ import requests
 
 from graph import GraphAPI
 
-CONTENT_TYPE = 'application/jpg'
-FILE_PATH_FOAMAT = 'root:/%Y/%m/%d/%H-%M-%S-%f.png:'
+TIME_FOAMAT = '/%Y/%m/%d/%H'
 TMP = Path(__file__).parent / 'tmp'
 TMP.mkdir(exist_ok=True)
 
@@ -49,10 +48,11 @@ def download_files(api: GraphAPI, user_id: str):
 
 def upload_files(api: GraphAPI, user_id: str):
     drive = api.get_drive(user_id)
-    for p in TMP.glob('*.png'):
-        file_path = datetime.now().strftime(FILE_PATH_FOAMAT)
+    for p in TMP.glob('*'):
+        folder = datetime.now().strftime(TIME_FOAMAT)
+        file_path = 'root:' + folder + p.name + ':'
         with open(p, 'rb') as f:
-            api.upload_file(CONTENT_TYPE, f.read(), drive_id=drive, file_path=file_path)
+            api.upload_file(f.read(), drive_id=drive, file_path=file_path)
 
 
 def send_mail(api: GraphAPI, sender: str, to: List[str]):
