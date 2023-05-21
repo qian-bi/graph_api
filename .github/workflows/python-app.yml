@@ -40,6 +40,9 @@ jobs:
         tenant_id: ${{ secrets.TENANT_ID }}
         secret: ${{ secrets.SECRET }}
         user_id: ${{ secrets.USER_ID }}
-        sender: ${{ secrets.SENDER }}
+        baidu_client_id: ${{ secrets.BAIDU_CLIENT_ID }}
+        baidu_client_secret: ${{ secrets.BAIDU_CLIENT_SECRET }}
+        refresh_token_key: ${{ secrets.REFRESH_TOKEN_KEY }}
+        refresh_token_associated_data: ${{ secrets.REFRESH_TOKEN_ASSOCIATED_DATA }}
       run: |
         python main.py
