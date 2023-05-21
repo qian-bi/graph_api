@@ -83,26 +83,25 @@ def get_zip_list(baiduApi, graphApi, drive):
 def upload_unzip(baiduApi, graphApi, drive):
     compressed_list = graphApi.get_item_content(drive, item_path='compressed.txt')
 
-    while compressed_list:
-        fs = compressed_list.pop(0)
+    fs = compressed_list.pop(0)
+    graphApi.upload_file(json.dumps(compressed_list), drive_id=drive, file_path='root:/compressed.txt:')
+    print(fs['path'])
+    try:
+        temp_file = TMP / fs['server_filename']
+        baiduApi.download(fs['fs_id'], temp_file)
+        extract_path = TMP / fs['path'][1:-4]
+        extract_path.mkdir(exist_ok=True, parents=True)
+        extract_files(temp_file, extract_path)
+        path_len = len(str(extract_path) + 1)
+        for file in extract_path.rglob('*'):
+            if file.is_file():
+                with open(file, 'rb') as f:
+                    file_path = str(file)[path_len:]
+                    graphApi.upload_file(f.read(), drive_id=drive, file_path=f'root:{fs["path"][:-4]}/{file_path}:')
+    except Exception as e:
+        print(e)
+        compressed_list.append(fs)
         graphApi.upload_file(json.dumps(compressed_list), drive_id=drive, file_path='root:/compressed.txt:')
-        print(fs['path'])
-        try:
-            temp_file = TMP / fs['server_filename']
-            baiduApi.download(fs['fs_id'], temp_file)
-            extract_path = TMP / fs['path'][1:-4]
-            extract_path.mkdir(exist_ok=True, parents=True)
-            extract_files(temp_file, extract_path)
-            path_len = len(str(extract_path) + 1)
-            for file in extract_path.rglob('*'):
-                if file.is_file():
-                    with open(file, 'rb') as f:
-                        file_path = str(file)[path_len:]
-                        graphApi.upload_file(f.read(), drive_id=drive, file_path=f'root:{fs["path"][:-4]}/{file_path}:')
-        except Exception as e:
-            print(e)
-            compressed_list.append(fs)
-            graphApi.upload_file(json.dumps(compressed_list), drive_id=drive, file_path='root:/compressed.txt:')
 
 
 def main():
