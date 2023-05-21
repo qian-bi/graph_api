@@ -1,3 +1,4 @@
+import json
 import os
 from datetime import datetime
 from pathlib import Path
@@ -5,9 +6,11 @@ from typing import List
 
 import requests
 
+from baidu import BaiduAPI
 from graph import GraphAPI
+from utils import decrypt, encrypt, extract_files
 
-TIME_FOAMAT = '/%Y/%m/%d/%H'
+TIME_FOAMAT = '/%Y/%m/%d/%H/'
 TMP = Path(__file__).parent / 'tmp'
 TMP.mkdir(exist_ok=True)
 
@@ -71,21 +74,77 @@ def send_mail(api: GraphAPI, sender: str, to: List[str]):
         })
 
 
+def get_zip_list(baiduApi, graphApi, drive):
+    data = baiduApi.search_files('.zip', '/我的资源', recursion=1)['list']
+    print(data)
+    graphApi.upload_file(json.dumps(data), drive_id=drive, file_path='root:/compressed.txt:')
+
+
+def upload_unzip(baiduApi, graphApi, drive):
+    compressed_list = graphApi.get_item_content(drive, item_path='compressed.txt')
+
+    while compressed_list:
+        fs = compressed_list.pop(0)
+        try:
+            temp_file = TMP / fs['server_filename']
+            baiduApi.download(fs['fs_id'], temp_file)
+            extract_path = TMP / fs['path'][1:-4]
+            extract_path.mkdir(exist_ok=True, parents=True)
+            extract_files(temp_file, extract_path)
+            path_len = len(str(extract_path) + 1)
+            for file in extract_path.rglob('*'):
+                if file.is_file():
+                    with open(file, 'rb') as f:
+                        file_path = str(file)[path_len:]
+                        graphApi.upload_file(f.read(), drive_id=drive, file_path=f'root:{fs["path"][:-4]}/{file_path}:')
+        except Exception as e:
+            print(e)
+            compressed_list.append(fs)
+        finally:
+            graphApi.upload_file(json.dumps(compressed_list), drive_id=drive, file_path='root:/compressed.txt:')
+
+
 def main():
-    config = {
+    graphConfig = {
         'client_id': os.getenv('client_id'),
         'tenant_id': os.getenv('tenant_id'),
         'secret': os.getenv('secret'),
         'user_id': os.getenv('user_id'),
     }
-    for v in config.values():
+    for v in graphConfig.values():
         if not v:
             raise ValueError('config error')
-    api = GraphAPI(config)
+    api = GraphAPI(graphConfig)
     get_users(api)
-    get_groups(api, config['user_id'])
-    download_files(api, config['user_id'])
-    upload_files(api, config['user_id'])
+    get_groups(api, graphConfig['user_id'])
+    download_files(api, graphConfig['user_id'])
+    upload_files(api, graphConfig['user_id'])
+
+    refresh_token = ''
+    drive = api.get_drive(graphConfig['user_id'])
+
+    def update_token(t):
+        iv, ciphertext, tag = encrypt(os.getenv('refresh_token_key'), t, os.getenv('refresh_token_associated_data'))
+        cipher_data = {'iv': iv, 'ciphertext': ciphertext, 'tag': tag}
+        api.upload_file(json.dumps(cipher_data), drive_id=drive, file_path='root:/refresh_token.txt:')
+
+    try:
+        token_file = api.get_item_content(drive, item_path='refresh_token.txt')
+        refresh_token = decrypt(os.getenv('refresh_token_key'), os.getenv('refresh_token_associated_data'),
+                                **token_file)
+    except ValueError as e:
+        print(e)
+
+    baiduConfig = {
+        'client_id': os.getenv('baidu_client_id'),
+        'client_secret': os.getenv('baidu_client_secret'),
+        'refresh_token': refresh_token or os.getenv('refresh_token'),
+    }
+    for v in baiduConfig.values():
+        if not v:
+            raise ValueError('config error')
+    baiduApi = BaiduAPI(baiduConfig, update_token)
+    upload_unzip(baiduApi, api, drive)
 
 
 if __name__ == '__main__':

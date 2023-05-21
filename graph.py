@@ -1,44 +1,37 @@
 import json
 from configparser import SectionProxy
-from enum import Enum
+from functools import partial
 
 import msal
 import requests
 
+from common import API, APIEnum, get_content
 
-class API:
-
-    def __init__(self, name: str, url: str, method: str = 'get', host: str = 'https://graph.microsoft.com/v1.0'):
-        self.name = name
-        self.url = url
-        self.host = host
-        self.method = method
+GraphHost = partial(API, host='https://graph.microsoft.com/v1.0')
 
 
-class APIEnum(Enum):
+class _GraphURL(APIEnum):
     authority = API('authority', '{host}/{tenant_id}', host='https://login.microsoftonline.com')
-    users = API('users', '{host}/users')
-    user = API('user', '{host}/users/{user_id}')
-    groups = API('users', '{host}/groups')
-    group = API('user', '{host}/groups/{group_id}')
-    group_member = API('user', '{host}/groups/{group_id}/members')
-    group_owner = API('user', '{host}/groups/{group_id}/owners')
-    photo = API('photo', '{host}/users/{user_id}/photo/$value')
-    drive = API('drive', '{host}/drives/{drive_id}')
-    user_drive = API('user_drive', '{host}/users/{user_id}/drive')
-    drive_item = API('drive_item', '{host}/drives/{drive_id}/items/{item_id}/children')
-    send_mail = API('users', '{host}/users/{user_id}/sendMail', method='post')
-    upload_drive = API('upload_drive', '{host}/drives/{drive_id}/items/{file_path}/content', method='put')
-    upload_user_drive = API('upload_user_drive', '{host}/users/{user_id}/drive/items/{file_path}/content', method='put')
-    replace_drive = API('replace_drive', '{host}/drives/{drive_id}/items/{item_id}/content', method='put')
-    replace_user_drive = API('replace_user_drive', '{host}/users/{user_id}/drive/items/{item_id}/content', method='put')
-
-    def get_url(self, **kwargs) -> str:
-        return self.value.url.format(host=self.value.host, **kwargs)
-
-    @property
-    def method(self) -> str:
-        return self.value.method
+    users = GraphHost('users', '{host}/users')
+    user = GraphHost('user', '{host}/users/{user_id}')
+    groups = GraphHost('users', '{host}/groups')
+    group = GraphHost('user', '{host}/groups/{group_id}')
+    group_member = GraphHost('user', '{host}/groups/{group_id}/members')
+    group_owner = GraphHost('user', '{host}/groups/{group_id}/owners')
+    photo = GraphHost('photo', '{host}/users/{user_id}/photo/$value')
+    drive = GraphHost('drive', '{host}/drives/{drive_id}')
+    user_drive = GraphHost('user_drive', '{host}/users/{user_id}/drive')
+    drive_item = GraphHost('drive_item', '{host}/drives/{drive_id}/items/{item_id}/children')
+    drive_path = GraphHost('drive_path', '{host}/drives/{drive_id}/root:/{item_path}')
+    send_mail = GraphHost('users', '{host}/users/{user_id}/sendMail', method='post')
+    upload_drive = GraphHost('upload_drive', '{host}/drives/{drive_id}/items/{file_path}/content', method='put')
+    upload_user_drive = GraphHost('upload_user_drive',
+                                  '{host}/users/{user_id}/drive/items/{file_path}/content',
+                                  method='put')
+    replace_drive = GraphHost('replace_drive', '{host}/drives/{drive_id}/items/{item_id}/content', method='put')
+    replace_user_drive = GraphHost('replace_user_drive',
+                                   '{host}/users/{user_id}/drive/items/{item_id}/content',
+                                   method='put')
 
 
 class GraphAPI:
@@ -47,7 +40,7 @@ class GraphAPI:
         self.scope = ["https://graph.microsoft.com/.default"]
         self._app = msal.ConfidentialClientApplication(
             config["client_id"],
-            authority=APIEnum.authority.get_url(tenant_id=config['tenant_id']),
+            authority=_GraphURL.authority.get_url(tenant_id=config['tenant_id']),
             client_credential=config["secret"])
         self._session = requests.Session()
         self._token_header = {'Authorization': ''}
@@ -61,7 +54,7 @@ class GraphAPI:
             raise ValueError('failed to get access token')
         self._token_header['Authorization'] = result.get("access_token")
 
-    def _request_graph(self, api: APIEnum, data_=None, json_=None, headers: dict = None, **kwargs):
+    def _request_graph(self, api: _GraphURL, data_=None, json_=None, headers: dict = None, **kwargs):
         if headers is None:
             headers = self._token_header
         else:
@@ -73,7 +66,7 @@ class GraphAPI:
                                                        json=json_)
         if res.status_code == 401:
             self.get_access_token()
-            return self._request_graph(api, data_, json_, **kwargs)
+            return self._request_graph(api, data_, json_, headers, **kwargs)
         if res.status_code >= 400:
             raise ValueError(f'request failed, code:{res.status_code}, response:{res.text}')
         if res.headers.get('content-type', '').startswith('application/json'):
@@ -82,37 +75,46 @@ class GraphAPI:
 
     def get_users(self, user_id: str = ''):
         if user_id:
-            return self._request_graph(APIEnum.user, user_id=user_id)
-        return self._request_graph(APIEnum.users)['value']
+            return self._request_graph(_GraphURL.user, user_id=user_id)
+        return self._request_graph(_GraphURL.users)['value']
 
     def get_user_photo(self, user_id: str):
-        return self._request_graph(APIEnum.photo, user_id=user_id)
+        return self._request_graph(_GraphURL.photo, user_id=user_id)
 
     def get_groups(self, group_id: str = ''):
         if group_id:
-            return self._request_graph(APIEnum.group, group_id=group_id)
-        return self._request_graph(APIEnum.groups)['value']
+            return self._request_graph(_GraphURL.group, group_id=group_id)
+        return self._request_graph(_GraphURL.groups)['value']
 
     def get_group_member(self, group_id: str):
-        return self._request_graph(APIEnum.group_member, group_id=group_id)['value']
+        return self._request_graph(_GraphURL.group_member, group_id=group_id)['value']
 
     def get_group_owner(self, group_id: str):
-        return self._request_graph(APIEnum.group_owner, group_id=group_id)['value']
+        return self._request_graph(_GraphURL.group_owner, group_id=group_id)['value']
 
     def get_drive(self, user_id: str = '', drive_id: str = ''):
         if user_id != '':
-            api = APIEnum.user_drive
+            api = _GraphURL.user_drive
         elif drive_id != '':
-            api = APIEnum.drive
+            api = _GraphURL.drive
         else:
             raise ValueError('params illegal')
         return self._request_graph(api, user_id=user_id, drive_id=drive_id)['id']
 
-    def get_drive_item(self, drive_id: str, item: str = 'root'):
-        return self._request_graph(APIEnum.drive_item, drive_id=drive_id, item_id=item)['value']
+    def get_drive_item(self, drive_id: str, item: str = 'root', item_path: str = ''):
+        if item_path:
+            return self._request_graph(_GraphURL.drive_path, drive_id=drive_id, item_path=item_path)
+        return self._request_graph(_GraphURL.drive_item, drive_id=drive_id, item_id=item)['value']
+
+    def get_item_content(self, drive_id: str, item: str = 'root', item_path: str = ''):
+        file_item = self.get_drive_item(drive_id, item, item_path)
+        res = self._session.get(file_item['@microsoft.graph.downloadUrl'])
+        if res.content.startswith((b'[', b'{')):
+            return json.loads(res.content)
+        return res.content
 
     def send_mail(self, user_id: str, body):
-        return self._request_graph(APIEnum.send_mail, json_=body, user_id=user_id)
+        return self._request_graph(_GraphURL.send_mail, json_=body, user_id=user_id)
 
     def upload_file(self,
                     content: bytes,
@@ -122,21 +124,21 @@ class GraphAPI:
                     item_id: str = ''):
         if drive_id != '':
             if file_path != '':
-                api = APIEnum.upload_drive
+                api = _GraphURL.upload_drive
             elif item_id != '':
-                api = APIEnum.replace_drive
+                api = _GraphURL.replace_drive
             else:
                 raise ValueError('params illegal')
         elif user_id != '':
             if file_path != '':
-                api = APIEnum.upload_user_drive
+                api = _GraphURL.upload_user_drive
             elif item_id != '':
-                api = APIEnum.replace_user_drive
+                api = _GraphURL.replace_user_drive
             else:
                 raise ValueError('params illegal')
         else:
             raise ValueError('params illegal')
-        content_type = _get_content(file_path)
+        content_type = get_content(file_path)
         return self._request_graph(api,
                                    data_=content,
                                    headers={'content-type': content_type},
@@ -144,345 +146,3 @@ class GraphAPI:
                                    file_path=file_path,
                                    user_id=user_id,
                                    item_id=item_id)
-
-
-def _get_content(filename: str):
-    i = filename.rfind('.')
-    if i != -1:
-        fmt = filename[i:]
-        if fmt.endswith(':'):
-            fmt = fmt[:-1]
-    else:
-        fmt = ''
-    return _CONTENT_MAP.get(fmt, 'application/octet-stream')
-
-
-_CONTENT_MAP = {
-    '.001': 'application/x-001',
-    '.301': 'application/x-301',
-    '.323': 'text/h323',
-    '.906': 'application/x-906',
-    '.907': 'drawing/907',
-    '.a11': 'application/x-a11',
-    '.acp': 'audio/x-mei-aac',
-    '.ai': 'application/postscript',
-    '.aif': 'audio/aiff',
-    '.aifc': 'audio/aiff',
-    '.aiff': 'audio/aiff',
-    '.anv': 'application/x-anv',
-    '.asa': 'text/asa',
-    '.asf': 'video/x-ms-asf',
-    '.asp': 'text/asp',
-    '.asx': 'video/x-ms-asf',
-    '.au': 'audio/basic',
-    '.avi': 'video/avi',
-    '.awf': 'application/vnd.adobe.workflow',
-    '.biz': 'text/xml',
-    '.bmp': 'application/x-bmp',
-    '.bot': 'application/x-bot',
-    '.c4t': 'application/x-c4t',
-    '.c90': 'application/x-c90',
-    '.cal': 'application/x-cals',
-    '.cat': 'application/vnd.ms-pki.seccat',
-    '.cdf': 'application/x-netcdf',
-    '.cdr': 'application/x-cdr',
-    '.cel': 'application/x-cel',
-    '.cer': 'application/x-x509-ca-cert',
-    '.cg4': 'application/x-g4',
-    '.cgm': 'application/x-cgm',
-    '.cit': 'application/x-cit',
-    '.class': 'java/*',
-    '.cml': 'text/xml',
-    '.cmp': 'application/x-cmp',
-    '.cmx': 'application/x-cmx',
-    '.cot': 'application/x-cot',
-    '.crl': 'application/pkix-crl',
-    '.crt': 'application/x-x509-ca-cert',
-    '.csi': 'application/x-csi',
-    '.css': 'text/css',
-    '.cut': 'application/x-cut',
-    '.dbf': 'application/x-dbf',
-    '.dbm': 'application/x-dbm',
-    '.dbx': 'application/x-dbx',
-    '.dcd': 'text/xml',
-    '.dcx': 'application/x-dcx',
-    '.der': 'application/x-x509-ca-cert',
-    '.dgn': 'application/x-dgn',
-    '.dib': 'application/x-dib',
-    '.dll': 'application/x-msdownload',
-    '.doc': 'application/msword',
-    '.dot': 'application/msword',
-    '.drw': 'application/x-drw',
-    '.dtd': 'text/xml',
-    '.dwf': 'Model/vnd.dwf',
-    '.dwg': 'application/x-dwg',
-    '.dxb': 'application/x-dxb',
-    '.dxf': 'application/x-dxf',
-    '.edn': 'application/vnd.adobe.edn',
-    '.emf': 'application/x-emf',
-    '.eml': 'message/rfc822',
-    '.ent': 'text/xml',
-    '.epi': 'application/x-epi',
-    '.eps': 'application/postscript',
-    '.etd': 'application/x-ebx',
-    '.exe': 'application/x-msdownload',
-    '.fax': 'image/fax',
-    '.fdf': 'application/vnd.fdf',
-    '.fif': 'application/fractals',
-    '.fo': 'text/xml',
-    '.frm': 'application/x-frm',
-    '.g4': 'application/x-g4',
-    '.gbr': 'application/x-gbr',
-    '.gif': 'image/gif',
-    '.gl2': 'application/x-gl2',
-    '.gp4': 'application/x-gp4',
-    '.hgl': 'application/x-hgl',
-    '.hmr': 'application/x-hmr',
-    '.hpg': 'application/x-hpgl',
-    '.hpl': 'application/x-hpl',
-    '.hqx': 'application/mac-binhex40',
-    '.hrf': 'application/x-hrf',
-    '.hta': 'application/hta',
-    '.htc': 'text/x-component',
-    '.htm': 'text/html',
-    '.html': 'text/html',
-    '.htt': 'text/webviewhtml',
-    '.htx': 'text/html',
-    '.icb': 'application/x-icb',
-    '.ico': 'image/x-icon',
-    '.iff': 'application/x-iff',
-    '.ig4': 'application/x-g4',
-    '.igs': 'application/x-igs',
-    '.iii': 'application/x-iphone',
-    '.img': 'application/x-img',
-    '.ins': 'application/x-internet-signup',
-    '.isp': 'application/x-internet-signup',
-    '.IVF': 'video/x-ivf',
-    '.java': 'java/*',
-    '.jfif': 'image/jpeg',
-    '.jpe': 'image/jpeg',
-    '.jpeg': 'image/jpeg',
-    '.jpg': 'image/jpeg',
-    '.js': 'application/x-javascript',
-    '.jsp': 'text/html',
-    '.la1': 'audio/x-liquid-file',
-    '.lar': 'application/x-laplayer-reg',
-    '.latex': 'application/x-latex',
-    '.lavs': 'audio/x-liquid-secure',
-    '.lbm': 'application/x-lbm',
-    '.lmsff': 'audio/x-la-lms',
-    '.ls': 'application/x-javascript',
-    '.ltr': 'application/x-ltr',
-    '.m1v': 'video/x-mpeg',
-    '.m2v': 'video/x-mpeg',
-    '.m3u': 'audio/mpegurl',
-    '.m4e': 'video/mpeg4',
-    '.mac': 'application/x-mac',
-    '.man': 'application/x-troff-man',
-    '.math': 'text/xml',
-    '.mdb': 'application/msaccess',
-    '.mfp': 'application/x-shockwave-flash',
-    '.mht': 'message/rfc822',
-    '.mhtml': 'message/rfc822',
-    '.mi': 'application/x-mi',
-    '.mid': 'audio/mid',
-    '.midi': 'audio/mid',
-    '.mil': 'application/x-mil',
-    '.mml': 'text/xml',
-    '.mnd': 'audio/x-musicnet-download',
-    '.mns': 'audio/x-musicnet-stream',
-    '.mocha': 'application/x-javascript',
-    '.movie': 'video/x-sgi-movie',
-    '.mp1': 'audio/mp1',
-    '.mp2': 'audio/mp2',
-    '.mp2v': 'video/mpeg',
-    '.mp3': 'audio/mp3',
-    '.mp4': 'video/mpeg4',
-    '.mpa': 'video/x-mpg',
-    '.mpd': 'application/vnd.ms-project',
-    '.mpe': 'video/x-mpeg',
-    '.mpeg': 'video/mpg',
-    '.mpg': 'video/mpg',
-    '.mpga': 'audio/rn-mpeg',
-    '.mpp': 'application/vnd.ms-project',
-    '.mps': 'video/x-mpeg',
-    '.mpt': 'application/vnd.ms-project',
-    '.mpv': 'video/mpg',
-    '.mpv2': 'video/mpeg',
-    '.mpw': 'application/vnd.ms-project',
-    '.mpx': 'application/vnd.ms-project',
-    '.mtx': 'text/xml',
-    '.mxp': 'application/x-mmxp',
-    '.net': 'image/pnetvue',
-    '.nrf': 'application/x-nrf',
-    '.nws': 'message/rfc822',
-    '.odc': 'text/x-ms-odc',
-    '.out': 'application/x-out',
-    '.p10': 'application/pkcs10',
-    '.p12': 'application/x-pkcs12',
-    '.p7b': 'application/x-pkcs7-certificates',
-    '.p7c': 'application/pkcs7-mime',
-    '.p7m': 'application/pkcs7-mime',
-    '.p7r': 'application/x-pkcs7-certreqresp',
-    '.p7s': 'application/pkcs7-signature',
-    '.pc5': 'application/x-pc5',
-    '.pci': 'application/x-pci',
-    '.pcl': 'application/x-pcl',
-    '.pcx': 'application/x-pcx',
-    '.pdf': 'application/pdf',
-    '.pdf': 'application/pdf',
-    '.pdx': 'application/vnd.adobe.pdx',
-    '.pfx': 'application/x-pkcs12',
-    '.pgl': 'application/x-pgl',
-    '.pic': 'application/x-pic',
-    '.pko': 'application/vnd.ms-pki.pko',
-    '.pl': 'application/x-perl',
-    '.plg': 'text/html',
-    '.pls': 'audio/scpls',
-    '.plt': 'application/x-plt',
-    '.png': 'image/png',
-    '.pot': 'application/vnd.ms-powerpoint',
-    '.ppa': 'application/vnd.ms-powerpoint',
-    '.ppm': 'application/x-ppm',
-    '.pps': 'application/vnd.ms-powerpoint',
-    '.ppt': 'application/vnd.ms-powerpoint',
-    '.pr': 'application/x-pr',
-    '.prf': 'application/pics-rules',
-    '.prn': 'application/x-prn',
-    '.prt': 'application/x-prt',
-    '.ps': 'application/postscript',
-    '.ptn': 'application/x-ptn',
-    '.pwz': 'application/vnd.ms-powerpoint',
-    '.r3t': 'text/vnd.rn-realtext3d',
-    '.ra': 'audio/vnd.rn-realaudio',
-    '.ram': 'audio/x-pn-realaudio',
-    '.ras': 'application/x-ras',
-    '.rat': 'application/rat-file',
-    '.rdf': 'text/xml',
-    '.rec': 'application/vnd.rn-recording',
-    '.red': 'application/x-red',
-    '.rgb': 'application/x-rgb',
-    '.rjs': 'application/vnd.rn-realsystem-rjs',
-    '.rjt': 'application/vnd.rn-realsystem-rjt',
-    '.rlc': 'application/x-rlc',
-    '.rle': 'application/x-rle',
-    '.rm': 'application/vnd.rn-realmedia',
-    '.rmf': 'application/vnd.adobe.rmf',
-    '.rmi': 'audio/mid',
-    '.rmj': 'application/vnd.rn-realsystem-rmj',
-    '.rmm': 'audio/x-pn-realaudio',
-    '.rmp': 'application/vnd.rn-rn_music_package',
-    '.rms': 'application/vnd.rn-realmedia-secure',
-    '.rmvb': 'application/vnd.rn-realmedia-vbr',
-    '.rmx': 'application/vnd.rn-realsystem-rmx',
-    '.rnx': 'application/vnd.rn-realplayer',
-    '.rp': 'image/vnd.rn-realpix',
-    '.rpm': 'audio/x-pn-realaudio-plugin',
-    '.rsml': 'application/vnd.rn-rsml',
-    '.rt': 'text/vnd.rn-realtext',
-    '.rtf': 'application/msword',
-    '.rv': 'video/vnd.rn-realvideo',
-    '.sam': 'application/x-sam',
-    '.sat': 'application/x-sat',
-    '.sdp': 'application/sdp',
-    '.sdw': 'application/x-sdw',
-    '.sit': 'application/x-stuffit',
-    '.slb': 'application/x-slb',
-    '.sld': 'application/x-sld',
-    '.slk': 'drawing/x-slk',
-    '.smi': 'application/smil',
-    '.smil': 'application/smil',
-    '.smk': 'application/x-smk',
-    '.snd': 'audio/basic',
-    '.sol': 'text/plain',
-    '.sor': 'text/plain',
-    '.spc': 'application/x-pkcs7-certificates',
-    '.spl': 'application/futuresplash',
-    '.spp': 'text/xml',
-    '.ssm': 'application/streamingmedia',
-    '.sst': 'application/vnd.ms-pki.certstore',
-    '.stl': 'application/vnd.ms-pki.stl',
-    '.stm': 'text/html',
-    '.sty': 'application/x-sty',
-    '.svg': 'text/xml',
-    '.swf': 'application/x-shockwave-flash',
-    '.tdf': 'application/x-tdf',
-    '.tg4': 'application/x-tg4',
-    '.tga': 'application/x-tga',
-    '.tif': 'image/tiff',
-    '.tiff': 'image/tiff',
-    '.tld': 'text/xml',
-    '.top': 'drawing/x-top',
-    '.torrent': 'application/x-bittorrent',
-    '.tsd': 'text/xml',
-    '.txt': 'text/plain',
-    '.uin': 'application/x-icq',
-    '.uls': 'text/iuls',
-    '.vcf': 'text/x-vcard',
-    '.vda': 'application/x-vda',
-    '.vdx': 'application/vnd.visio',
-    '.vml': 'text/xml',
-    '.vpg': 'application/x-vpeg005',
-    '.vsd': 'application/vnd.visio',
-    '.vss': 'application/vnd.visio',
-    '.vst': 'application/vnd.visio',
-    '.vsw': 'application/vnd.visio',
-    '.vsx': 'application/vnd.visio',
-    '.vtx': 'application/vnd.visio',
-    '.vxml': 'text/xml',
-    '.wav': 'audio/wav',
-    '.wax': 'audio/x-ms-wax',
-    '.wb1': 'application/x-wb1',
-    '.wb2': 'application/x-wb2',
-    '.wb3': 'application/x-wb3',
-    '.wbmp': 'image/vnd.wap.wbmp',
-    '.wiz': 'application/msword',
-    '.wk3': 'application/x-wk3',
-    '.wk4': 'application/x-wk4',
-    '.wkq': 'application/x-wkq',
-    '.wks': 'application/x-wks',
-    '.wm': 'video/x-ms-wm',
-    '.wma': 'audio/x-ms-wma',
-    '.wmd': 'application/x-ms-wmd',
-    '.wmf': 'application/x-wmf',
-    '.wml': 'text/vnd.wap.wml',
-    '.wmv': 'video/x-ms-wmv',
-    '.wmx': 'video/x-ms-wmx',
-    '.wmz': 'application/x-ms-wmz',
-    '.wp6': 'application/x-wp6',
-    '.wpd': 'application/x-wpd',
-    '.wpg': 'application/x-wpg',
-    '.wpl': 'application/vnd.ms-wpl',
-    '.wq1': 'application/x-wq1',
-    '.wr1': 'application/x-wr1',
-    '.wri': 'application/x-wri',
-    '.wrk': 'application/x-wrk',
-    '.ws': 'application/x-ws',
-    '.ws2': 'application/x-ws',
-    '.wsc': 'text/scriptlet',
-    '.wsdl': 'text/xml',
-    '.wvx': 'video/x-ms-wvx',
-    '.xdp': 'application/vnd.adobe.xdp',
-    '.xdr': 'text/xml',
-    '.xfd': 'application/vnd.adobe.xfd',
-    '.xfdf': 'application/vnd.adobe.xfdf',
-    '.xhtml': 'text/html',
-    '.xls': 'application/vnd.ms-excel',
-    '.xlw': 'application/x-xlw',
-    '.xml': 'text/xml',
-    '.xpl': 'audio/scpls',
-    '.xq': 'text/xml',
-    '.xql': 'text/xml',
-    '.xquery': 'text/xml',
-    '.xsd': 'text/xml',
-    '.xsl': 'text/xml',
-    '.xslt': 'text/xml',
-    '.xwd': 'application/x-xwd',
-    '.x_b': 'application/x-x_b',
-    '.sis': 'application/vnd.symbian.install',
-    '.sisx': 'application/vnd.symbian.install',
-    '.x_t': 'application/x-x_t',
-    '.ipa': 'application/vnd.iphone',
-    '.apk': 'application/vnd.android.package-archive',
-    '.xap': 'application/x-silverlight-app'
-}
