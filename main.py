@@ -89,6 +89,8 @@ def upload_unzip(baiduApi, graphApi, drive):
     try:
         temp_file = TMP / fs['server_filename']
         baiduApi.download(fs['fs_id'], temp_file)
+        with open(temp_file, 'rb') as f:
+            graphApi.upload_file(f.read(), drive_id=drive, file_path=f'root:{fs["path"]}:')
         extract_path = TMP / fs['path'][1:-4]
         extract_path.mkdir(exist_ok=True, parents=True)
         extract_files(temp_file, extract_path)
