@@ -99,9 +99,8 @@ def upload_unzip(baiduApi: BaiduAPI, graphApi: GraphAPI, drive: str):
         path_len = len(str(extract_path) + 1)
         for file in extract_path.rglob('*'):
             if file.is_file():
-                with open(file, 'rb') as f:
-                    file_path = str(file)[path_len:]
-                    graphApi.upload_content(f.read(), drive_id=drive, file_path=f'root:{fs["path"][:-4]}/{file_path}:')
+                file_path = str(file)[path_len:]
+                graphApi.upload_file(file, f'root:{fs["path"][:-4]}/{file_path}:', drive_id=drive)
     except Exception as e:
         print(e)
         compressed_list.append(fs)

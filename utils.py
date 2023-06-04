@@ -38,7 +38,7 @@ def extract_files(zip_path: Path, extract_path: Path):
                 file_name = zip_file.encode('cp437').decode('gbk')
             except Exception as e:
                 print(e)
-                file_name = zip_file.encode('utf-8').decode('utf-8')
+                file_name = zip_file.encode('cp437').decode('utf-8')
             (extract_path / file_name).parent.mkdir(exist_ok=True, parents=True)
             with open(extract_path / file_name, 'wb') as f:
                 f.write(zf.read(zip_file))
