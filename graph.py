@@ -1,6 +1,7 @@
 import json
 from configparser import SectionProxy
 from functools import partial
+from pathlib import Path
 
 import msal
 import requests
@@ -32,6 +33,12 @@ class _GraphURL(APIEnum):
     replace_user_drive = GraphHost('replace_user_drive',
                                    '{host}/users/{user_id}/drive/items/{item_id}/content',
                                    method='put')
+    upload_session = GraphHost('create_upload_session',
+                               '{host}/drives/{drive_id}/items/{item_id}/createUploadSession',
+                               method='post')
+    user_upload_session = GraphHost('upload_session',
+                                    '{host}//users/{user_id}/drive/items/{item_id}/createUploadSession',
+                                    method='post')
 
 
 class GraphAPI:
@@ -116,12 +123,45 @@ class GraphAPI:
     def send_mail(self, user_id: str, body):
         return self._request_graph(_GraphURL.send_mail, json_=body, user_id=user_id)
 
-    def upload_file(self,
-                    content: bytes,
-                    drive_id: str = '',
-                    file_path: str = '',
-                    user_id: str = '',
-                    item_id: str = ''):
+    def upload_file(self, local_path: Path, remote_path: str, user_id: str = '', drive_id: str = ''):
+        if user_id != '' and drive_id == '':
+            api = _GraphURL.user_upload_session
+        elif user_id == '' and drive_id != '':
+            api = _GraphURL.upload_session
+        else:
+            raise ValueError('params illegal')
+        item_id = self.upload_content(b'', drive_id=drive_id, file_path=remote_path)['id']
+        file_size = local_path.stat().st_size
+        res = self._request_graph(api,
+                                  json_={"item": {
+                                      "@microsoft.graph.conflictBehavior": "replace"
+                                  }},
+                                  user_id=user_id,
+                                  drive_id=drive_id,
+                                  item_id=item_id)
+        upload_url = res['uploadUrl']
+        with open(local_path, 'rb') as f:
+            i = 0
+            while True:
+                data = f.read(1280 * 1024)
+                if not data:
+                    break
+                upload_res = self._session.put(upload_url,
+                                               data=data,
+                                               headers={
+                                                   'Content-Length': str(len(data)),
+                                                   'Content-Range': f'bytes {i}-{i+len(data)-1}/{file_size}'
+                                               })
+                if upload_res.status_code >= 400:
+                    raise ValueError(f'upload failed, code:{upload_res.status_code}, response:{upload_res.text}')
+                i += len(data)
+
+    def upload_content(self,
+                       content: bytes,
+                       drive_id: str = '',
+                       file_path: str = '',
+                       user_id: str = '',
+                       item_id: str = ''):
         if drive_id != '':
             if file_path != '':
                 api = _GraphURL.upload_drive

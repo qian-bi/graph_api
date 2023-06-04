@@ -55,7 +55,7 @@ def upload_files(api: GraphAPI, user_id: str):
         folder = datetime.now().strftime(TIME_FOAMAT)
         file_path = 'root:' + folder + p.name + ':'
         with open(p, 'rb') as f:
-            api.upload_file(f.read(), drive_id=drive, file_path=file_path)
+            api.upload_content(f.read(), drive_id=drive, file_path=file_path)
 
 
 def send_mail(api: GraphAPI, sender: str, to: List[str]):
@@ -74,23 +74,25 @@ def send_mail(api: GraphAPI, sender: str, to: List[str]):
         })
 
 
-def get_zip_list(baiduApi, graphApi, drive):
+def get_zip_list(baiduApi: BaiduAPI, graphApi: GraphAPI, drive: str):
     data = baiduApi.search_files('.zip', '/我的资源', recursion=1)['list']
     print(data)
-    graphApi.upload_file(json.dumps(data), drive_id=drive, file_path='root:/compressed.txt:')
+    graphApi.upload_content(json.dumps(data), drive_id=drive, file_path='root:/compressed.txt:')
 
 
-def upload_unzip(baiduApi, graphApi, drive):
+def upload_unzip(baiduApi: BaiduAPI, graphApi: GraphAPI, drive: str):
     compressed_list = graphApi.get_item_content(drive, item_path='compressed.txt')
 
     fs = compressed_list.pop(0)
-    graphApi.upload_file(json.dumps(compressed_list), drive_id=drive, file_path='root:/compressed.txt:')
+    graphApi.upload_content(json.dumps(compressed_list), drive_id=drive, file_path='root:/compressed.txt:')
     print(fs['path'])
     try:
         temp_file = TMP / fs['server_filename']
         baiduApi.download(fs['fs_id'], temp_file)
-        with open(temp_file, 'rb') as f:
-            graphApi.upload_file(f.read(), drive_id=drive, file_path=f'root:{fs["path"]}:')
+        try:
+            graphApi.upload_file(temp_file, f'root:{fs["path"]}:', drive_id=drive)
+        except Exception as e:
+            print(e)
         extract_path = TMP / fs['path'][1:-4]
         extract_path.mkdir(exist_ok=True, parents=True)
         extract_files(temp_file, extract_path)
@@ -99,11 +101,11 @@ def upload_unzip(baiduApi, graphApi, drive):
             if file.is_file():
                 with open(file, 'rb') as f:
                     file_path = str(file)[path_len:]
-                    graphApi.upload_file(f.read(), drive_id=drive, file_path=f'root:{fs["path"][:-4]}/{file_path}:')
+                    graphApi.upload_content(f.read(), drive_id=drive, file_path=f'root:{fs["path"][:-4]}/{file_path}:')
     except Exception as e:
         print(e)
         compressed_list.append(fs)
-        graphApi.upload_file(json.dumps(compressed_list), drive_id=drive, file_path='root:/compressed.txt:')
+        graphApi.upload_content(json.dumps(compressed_list), drive_id=drive, file_path='root:/compressed.txt:')
 
 
 def main():
@@ -128,7 +130,7 @@ def main():
     def update_token(t):
         iv, ciphertext, tag = encrypt(os.getenv('refresh_token_key'), t, os.getenv('refresh_token_associated_data'))
         cipher_data = {'iv': iv, 'ciphertext': ciphertext, 'tag': tag}
-        api.upload_file(json.dumps(cipher_data), drive_id=drive, file_path='root:/refresh_token.txt:')
+        api.upload_content(json.dumps(cipher_data), drive_id=drive, file_path='root:/refresh_token.txt:')
 
     try:
         token_file = api.get_item_content(drive, item_path='refresh_token.txt')
