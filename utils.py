@@ -34,6 +34,8 @@ def decrypt(key: str, associated_data: str, iv: str, ciphertext: str, tag: str):
 def extract_files(zip_path: Path, extract_path: Path):
     with zipfile.ZipFile(zip_path) as zf:
         for zip_file in zf.namelist():
+            if zip_file.endswith('/'):
+                continue
             try:
                 file_name = zip_file.encode('cp437').decode('gbk')
             except Exception as e:
