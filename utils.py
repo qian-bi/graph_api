@@ -39,7 +39,6 @@ def extract_files(zip_path: Path, extract_path: Path):
             try:
                 file_name = zip_file.encode('cp437').decode('gbk')
             except Exception as e:
-                print(e)
                 file_name = zip_file.encode('cp437').decode('utf-8')
             (extract_path / file_name).parent.mkdir(exist_ok=True, parents=True)
             with open(extract_path / file_name, 'wb') as f:
