@@ -96,7 +96,7 @@ def upload_unzip(baiduApi: BaiduAPI, graphApi: GraphAPI, drive: str):
         extract_path = TMP / fs['path'][1:-4]
         extract_path.mkdir(exist_ok=True, parents=True)
         extract_files(temp_file, extract_path)
-        path_len = len(str(extract_path) + 1)
+        path_len = len(str(extract_path)) + 1
         for file in extract_path.rglob('*'):
             if file.is_file():
                 file_path = str(file)[path_len:]
