@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 from datetime import datetime
 from pathlib import Path
@@ -18,19 +19,19 @@ TMP.mkdir(exist_ok=True)
 def get_users(api: GraphAPI):
     users = api.get_users()
     for u in users:
-        print('user_name', u['displayName'])
+        logging.info('user_name: %s', u['displayName'])
         try:
             photo = api.get_user_photo(u['id'])
             with open(TMP / f'{u["displayName"]}.png', 'wb') as f:
                 f.write(photo)
         except Exception as e:
-            print(e)
+            logging.error("get user failed, err: %s", e)
 
 
 def get_groups(api: GraphAPI, user_id: str):
     groups = api.get_groups()
     for g in groups:
-        print('group_name', g['displayName'])
+        logging.info('group_name: %s', g['displayName'])
         send_mail(api, user_id, [g['mail']])
         members = api.get_group_member(g['id'])
         send_mail(api, user_id, [m['mail'] for m in members])
@@ -38,12 +39,12 @@ def get_groups(api: GraphAPI, user_id: str):
 
 def download_files(api: GraphAPI, user_id: str):
     drive = api.get_drive(user_id)
-    print('drive_id', drive)
+    logging.info('drive_id: %s', drive)
     items = api.get_drive_item(drive)
     for item in items:
         if item['name'] == 'Public':
             for d in api.get_drive_item(drive, item['id']):
-                print('file_name', d['name'])
+                logging.info('file_name: %s', d['name'])
                 res = requests.get(d['@microsoft.graph.downloadUrl'])
                 with open(TMP / d["name"], 'wb') as f:
                     f.write(res.content)
@@ -59,7 +60,7 @@ def upload_files(api: GraphAPI, user_id: str):
 
 
 def send_mail(api: GraphAPI, sender: str, to: List[str]):
-    print('recipients', to)
+    logging.info('recipients: %s', to)
     recipients = [{"emailAddress": {"address": a}} for a in to]
     api.send_mail(
         sender, {
@@ -76,7 +77,7 @@ def send_mail(api: GraphAPI, sender: str, to: List[str]):
 
 def get_zip_list(baiduApi: BaiduAPI, graphApi: GraphAPI, drive: str):
     data = baiduApi.search_files('.zip', '/我的资源', recursion=1)['list']
-    print(data)
+    logging.debug(data)
     graphApi.upload_content(json.dumps(data), drive_id=drive, file_path='root:/compressed.txt:')
 
 
@@ -85,14 +86,14 @@ def upload_unzip(baiduApi: BaiduAPI, graphApi: GraphAPI, drive: str):
 
     fs = compressed_list.pop(0)
     graphApi.upload_content(json.dumps(compressed_list), drive_id=drive, file_path='root:/compressed.txt:')
-    print(fs['path'])
+    logging.info('remote path: %s', fs['path'])
     try:
         temp_file = TMP / fs['server_filename']
         baiduApi.download(fs['fs_id'], temp_file)
         try:
             graphApi.upload_file(temp_file, f'root:{fs["path"]}:', drive_id=drive)
         except Exception as e:
-            print(e)
+            logging.error('upload zip failed, err: %s', e)
         extract_path = TMP / fs['path'][1:-4]
         extract_path.mkdir(exist_ok=True, parents=True)
         extract_files(temp_file, extract_path)
@@ -102,12 +103,13 @@ def upload_unzip(baiduApi: BaiduAPI, graphApi: GraphAPI, drive: str):
                 file_path = str(file)[path_len:]
                 graphApi.upload_file(file, f'root:{fs["path"][:-4]}/{file_path}:', drive_id=drive)
     except Exception as e:
-        print(e)
+        logging.error('upload unzip failed, err: %s', e)
         compressed_list.append(fs)
         graphApi.upload_content(json.dumps(compressed_list), drive_id=drive, file_path='root:/compressed.txt:')
 
 
 def main():
+    logging.basicConfig(level=logging.DEBUG)
     graphConfig = {
         'client_id': os.getenv('client_id'),
         'tenant_id': os.getenv('tenant_id'),
@@ -136,7 +138,7 @@ def main():
         refresh_token = decrypt(os.getenv('refresh_token_key'), os.getenv('refresh_token_associated_data'),
                                 **token_file)
     except ValueError as e:
-        print(e)
+        logging.error('update token failed, err: %s', e)
 
     baiduConfig = {
         'client_id': os.getenv('baidu_client_id'),

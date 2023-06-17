@@ -1,4 +1,5 @@
 import json
+import logging
 from configparser import SectionProxy
 from functools import partial
 from pathlib import Path
@@ -66,8 +67,6 @@ class BaiduAPI:
             'client_id': self._client_id,
             'client_secret': self._client_secret
         })
-        with open('refresh_token', 'w') as f:
-            f.write(res['refresh_token'])
         if self.update_token:
             self.update_token(res['refresh_token'])
         self._token_params['access_token'] = res['access_token']
@@ -106,4 +105,5 @@ class BaiduAPI:
                         i += 1048576
                     return
                 except Exception as e:
-                    print(e)
+                    logging.error('download failed, err: %s', e)
+        raise ValueError('download failed')
