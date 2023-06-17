@@ -81,14 +81,29 @@ class BaiduAPI:
         res = self._request_baidu(_BaiduURL.search, params_=params)
         return res
 
-    def get_download_url(self, fs_id: int):
+    def get_filemeta(self, fs_id: int):
         fsids = f'[{fs_id}]'
         res = self._request_baidu(_BaiduURL.filemeta, params_={'fsids': fsids, 'dlink': 1})
-        return res['list'][0]['dlink']
+        return res['list'][0]
 
     def download(self, fs_id: int, file: Path):
-        url = self.get_download_url(fs_id)
-        with self._session.request('get', url, headers=self._header, params=self._token_params, stream=True) as r:
+        filemeta = self.get_filemeta(fs_id)
+        url = filemeta['dlink']
+        size = filemeta['size']
+        i = 0
+        for _ in range(10):
             with open(file, 'wb') as f:
-                for content in r.iter_content(chunk_size=1048576):
-                    f.write(content)
+                try:
+                    while True:
+                        if i > size:
+                            break
+                        header = {'User-Agent': 'pan.baidu.com', 'Range': f'bytes={i}-{i+1048575}'}
+                        with self._session.get(url, headers=header, params=self._token_params, stream=True) as r:
+                            for content in r.iter_content(chunk_size=8912):
+                                if not content:
+                                    break
+                                f.write(content)
+                        i += 1048576
+                    return
+                except Exception as e:
+                    print(e)
