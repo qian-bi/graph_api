@@ -1,5 +1,4 @@
 import json
-import logging
 from configparser import SectionProxy
 from functools import partial
 from pathlib import Path
@@ -7,6 +6,7 @@ from pathlib import Path
 import requests
 
 from common import API, APIEnum
+from utils import ThreadDownload
 
 BaiduHost = partial(API, host='https://pan.baidu.com')
 
@@ -89,21 +89,4 @@ class BaiduAPI:
         filemeta = self.get_filemeta(fs_id)
         url = filemeta['dlink']
         size = filemeta['size']
-        i = 0
-        for _ in range(10):
-            with open(file, 'wb') as f:
-                try:
-                    while True:
-                        if i > size:
-                            break
-                        header = {'User-Agent': 'pan.baidu.com', 'Range': f'bytes={i}-{i+1048575}'}
-                        with self._session.get(url, headers=header, params=self._token_params, stream=True) as r:
-                            for content in r.iter_content(chunk_size=8912):
-                                if not content:
-                                    break
-                                f.write(content)
-                        i += 1048576
-                    return
-                except Exception as e:
-                    logging.error('download failed, err: %s', e)
-        raise ValueError('download failed')
+        ThreadDownload(size, url, file, headers=self._header, params=self._token_params).run()

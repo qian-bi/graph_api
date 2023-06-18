@@ -1,8 +1,12 @@
+import logging
 import secrets
 import zipfile
 from base64 import b64decode, b64encode
 from pathlib import Path
+from queue import Queue
+from threading import Lock, Thread
 
+import requests
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
 
@@ -43,3 +47,65 @@ def extract_files(zip_path: Path, extract_path: Path):
             (extract_path / file_name).parent.mkdir(exist_ok=True, parents=True)
             with open(extract_path / file_name, 'wb') as f:
                 f.write(zf.read(zip_file))
+
+
+class ThreadDownload:
+
+    def __init__(self,
+                 size: int,
+                 url: str,
+                 local_path: str,
+                 headers: dict = None,
+                 chunk: int = 1048576,
+                 **kwargs) -> None:
+        if size <= 0 or chunk <= 0:
+            raise ValueError('invalid params')
+        self.queue = Queue()
+        for i in range(0, size, chunk):
+            self.queue.put((i, i + chunk - 1))
+        self.error_queue = Queue()
+        self.local_path = local_path
+        self.url = url
+        self.headers = headers
+        self.kwargs = kwargs
+        self.lock = Lock()
+        with open(local_path, 'wb') as f:
+            f.seek(size - 1)
+            f.write(b'\x00')
+
+    def download(self):
+        while True:
+            with self.lock:
+                if self.queue.empty():
+                    return
+                content_range = self.queue.get()
+            headers = {'Range': f'bytes={content_range[0]}-{content_range[1]}'}
+            if self.headers:
+                headers.update(self.headers)
+            self._download(content_range, headers)
+            if not self.error_queue.empty():
+                return
+
+    def _download(self, content_range, headers):
+        for i in range(0, 3):
+            try:
+                with requests.get(self.url, headers=headers, stream=True,
+                                  **self.kwargs) as r, open(self.local_path, 'rb+') as f:
+                    f.seek(content_range[0])
+                    for content in r.iter_content(chunk_size=8912):
+                        if not content:
+                            break
+                        f.write(content)
+                    return
+            except Exception as e:
+                logging.error('download failed, retry: %d, err: %s', i + 1, e)
+        self.error_queue.put('download failed')
+
+    def run(self, n: int = 5):
+        tasks = [Thread(target=self.download) for _ in range(n)]
+        for t in tasks:
+            t.start()
+        for t in tasks:
+            t.join()
+        if not self.error_queue.empty():
+            raise ValueError('download failed')
