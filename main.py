@@ -109,7 +109,7 @@ def upload_unzip(baiduApi: BaiduAPI, graphApi: GraphAPI, drive: str):
 
 
 def main():
-    log_format = '%(asctime)-15s\tThread info: %(thread)d %(threadName)s %(message)s'
+    log_format = '%(asctime)-15s\tThread info: %(threadName)s %(message)s'
     logging.basicConfig(level=logging.INFO, format=log_format, datefmt='%Y/%m/%d %H:%M:%S')
     graphConfig = {
         'client_id': os.getenv('client_id'),

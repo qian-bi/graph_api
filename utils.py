@@ -56,7 +56,7 @@ class ThreadDownload:
                  url: str,
                  local_path: str,
                  headers: dict = None,
-                 chunk: int = 1048576,
+                 chunk: int = 1310720,
                  **kwargs) -> None:
         if size <= 0 or chunk <= 0:
             raise ValueError('invalid params')
@@ -92,7 +92,7 @@ class ThreadDownload:
                 with requests.get(self.url, headers=headers, stream=True,
                                   **self.kwargs) as r, open(self.local_path, 'rb+') as f:
                     f.seek(content_range[0])
-                    for content in r.iter_content(chunk_size=8912):
+                    for content in r.iter_content(chunk_size=8192):
                         if not content:
                             break
                         f.write(content)
@@ -101,7 +101,7 @@ class ThreadDownload:
                 logging.error('download failed, retry: %d, err: %s', i + 1, e)
         self.error_queue.put('download failed')
 
-    def run(self, n: int = 5):
+    def run(self, n: int = 30):
         tasks = [Thread(target=self.download) for _ in range(n)]
         for t in tasks:
             t.start()
