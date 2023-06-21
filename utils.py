@@ -87,21 +87,24 @@ class ThreadDownload:
                 return
 
     def _download(self, content_range, headers):
-        for i in range(0, 3):
+        for i in range(0, 5):
             try:
-                with requests.get(self.url, headers=headers, stream=True,
-                                  **self.kwargs) as r, open(self.local_path, 'rb+') as f:
-                    f.seek(content_range[0])
-                    for content in r.iter_content(chunk_size=8192):
-                        if not content:
-                            break
-                        f.write(content)
-                    return
+                with requests.get(self.url, headers=headers, stream=True, **self.kwargs) as r:
+                    if r.status_code >= 400:
+                        logging.error('download failed, resp:%s', r.text)
+                        continue
+                    with open(self.local_path, 'rb+') as f:
+                        f.seek(content_range[0])
+                        for content in r.iter_content(chunk_size=8192):
+                            if not content:
+                                break
+                            f.write(content)
+                return
             except Exception as e:
                 logging.error('download failed, retry: %d, err: %s', i + 1, e)
         self.error_queue.put('download failed')
 
-    def run(self, n: int = 30):
+    def run(self, n: int = 10):
         tasks = [Thread(target=self.download) for _ in range(n)]
         for t in tasks:
             t.start()
