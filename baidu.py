@@ -90,3 +90,11 @@ class BaiduAPI:
         url = filemeta['dlink']
         size = filemeta['size']
         ThreadDownload(size, url, file, headers=self._header, params=self._token_params).run()
+
+    def get_file_content(self, fs_id: int, next_byte: int):
+        filemeta = self.get_filemeta(fs_id)
+        url = filemeta['dlink']
+        size = filemeta['size']
+        for i in range(next_byte, size, 1310720):
+            headers = {'Range': f'bytes={i}-{i+1310719}', 'User-Agent': 'pan.baidu.com'}
+            yield self._session.get(url, headers=headers, params=self._token_params)

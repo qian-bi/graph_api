@@ -123,6 +123,23 @@ class GraphAPI:
     def send_mail(self, user_id: str, body):
         return self._request_graph(_GraphURL.send_mail, json_=body, user_id=user_id)
 
+    def create_upload_session(self, remote_path: str, user_id: str = '', drive_id: str = ''):
+        if user_id != '' and drive_id == '':
+            api = _GraphURL.user_upload_session
+        elif user_id == '' and drive_id != '':
+            api = _GraphURL.upload_session
+        else:
+            raise ValueError('params illegal')
+        item_id = self.upload_content(b'', drive_id=drive_id, file_path=remote_path)['id']
+        res = self._request_graph(api,
+                                  json_={"item": {
+                                      "@microsoft.graph.conflictBehavior": "replace"
+                                  }},
+                                  user_id=user_id,
+                                  drive_id=drive_id,
+                                  item_id=item_id)
+        return res['uploadUrl']
+
     def upload_file(self, local_path: Path, remote_path: str, user_id: str = '', drive_id: str = ''):
         if user_id != '' and drive_id == '':
             api = _GraphURL.user_upload_session
