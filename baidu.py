@@ -56,7 +56,7 @@ class BaiduAPI:
             self.refresh_token()
             return self._request_baidu(api, params_, data_, json_, headers, **kwargs)
         if res.status_code >= 400:
-            raise ValueError(f'request failed, code:{res.status_code}, response:{res.text}')
+            raise ValueError(f'request failed, api:{api.name}, code:{res.status_code}, response:{res.text}')
         if res.headers.get('content-type', '').startswith('application/json'):
             return json.loads(res.content)
         return res.content
@@ -97,4 +97,7 @@ class BaiduAPI:
         size = filemeta['size']
         for i in range(next_byte, size, 1310720):
             headers = {'Range': f'bytes={i}-{i+1310719}', 'User-Agent': 'pan.baidu.com'}
-            yield self._session.get(url, headers=headers, params=self._token_params)
+            res = self._session.get(url, headers=headers, params=self._token_params)
+            if res.status_code >= 400:
+                raise ValueError(f'request failed, code:{res.status_code}, response:{res.text}')
+            yield res

@@ -75,7 +75,7 @@ class GraphAPI:
             self.get_access_token()
             return self._request_graph(api, data_, json_, headers, **kwargs)
         if res.status_code >= 400:
-            raise ValueError(f'request failed, code:{res.status_code}, response:{res.text}')
+            raise ValueError(f'request failed, api:{api.name}, code:{res.status_code}, response:{res.text}')
         if res.headers.get('content-type', '').startswith('application/json'):
             return json.loads(res.content)
         return res.content
@@ -116,6 +116,8 @@ class GraphAPI:
     def get_item_content(self, drive_id: str, item: str = 'root', item_path: str = ''):
         file_item = self.get_drive_item(drive_id, item, item_path)
         res = self._session.get(file_item['@microsoft.graph.downloadUrl'])
+        if res.status_code >= 400:
+            raise ValueError(f'get item failed, code:{res.status_code}, response:{res.text}')
         if res.content.startswith((b'[', b'{')):
             return json.loads(res.content)
         return res.content

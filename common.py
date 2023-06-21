@@ -19,6 +19,10 @@ class APIEnum(Enum):
     def method(self) -> str:
         return self.value.method
 
+    @property
+    def name(self) -> str:
+        return self.value.name
+
 
 def get_content(filename: str):
     i = filename.rfind('.')
