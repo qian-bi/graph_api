@@ -1,9 +1,10 @@
 import json
 import logging
 import os
+import sys
+import time
 from datetime import datetime
 from pathlib import Path
-import sys
 from typing import List
 
 import requests
@@ -113,6 +114,7 @@ def check_current_file(graphApi: GraphAPI, drive: str):
     current_file = graphApi.get_item_content(drive, item_path='baidu_current_file.txt')
     res = requests.get(current_file['upload_url'])
     if res.status_code == 404:
+        logging.info('current file finished')
         return None, 0
     data = json.loads(res.content)
     next_range = data['nextExpectedRanges'][0]
@@ -127,6 +129,7 @@ def get_next_file(baiduApi: BaiduAPI, graphApi: GraphAPI, drive: str):
         file_list = baiduApi.search_files('.', '/', page=file_list['next_page'], recursion=1)
         if file_list['has_more'] == 1:
             file_list['next_page'] = file_list['next_page'] + 1
+    logging.info('total list: %d', len(file_list['list']))
     current_file = file_list['list'].pop()
     current_file['upload_url'] = graphApi.create_upload_session(f'root:{current_file["path"]}:', drive_id=drive)
     graphApi.upload_content(json.dumps(file_list), drive_id=drive, file_path='root:/baidu_file_list.txt:')
@@ -134,7 +137,7 @@ def get_next_file(baiduApi: BaiduAPI, graphApi: GraphAPI, drive: str):
     return current_file
 
 
-def transfer_file(baiduApi: BaiduAPI, fs: dict, next_byte: int):
+def transport_file(baiduApi: BaiduAPI, fs: dict, next_byte: int, start_time: float):
     for res in baiduApi.get_file_content(fs['fs_id'], next_byte):
         if res.status_code > 400:
             raise ValueError(f'request failed, code:{res.status_code}, response:{res.text}')
@@ -146,24 +149,35 @@ def transfer_file(baiduApi: BaiduAPI, fs: dict, next_byte: int):
                                   })
         if upload_res.status_code >= 400:
             raise ValueError(f'upload failed, code:{upload_res.status_code}, response:{upload_res.text}')
+        check_time(start_time, 13800)
+    logging.info('file %s finished', fs['server_filename'])
+
+
+def check_time(start_time, diff: float):
+    if time.time() - start_time >= diff:
+        raise TimeOut()
 
 
 def baidu_to_onedrive(baiduApi: BaiduAPI, graphApi: GraphAPI, drive: str):
+    start_time = time.time()
     while True:
         try:
+            check_time(start_time, 13800)
             current_file, next_byte = check_current_file(graphApi, drive)
             if current_file is None:
                 current_file = get_next_file(baiduApi, graphApi, drive)
             if current_file is None:
                 return
-            logging.info('transfer file: %s', current_file['server_filename'])
-            transfer_file(baiduApi, current_file, next_byte)
+            logging.info('transport file: %s', current_file['server_filename'])
+            transport_file(baiduApi, current_file, next_byte, start_time)
+        except TimeOut:
+            return
         except Exception as e:
-            logging.error('transfer file to onedrive failed,file:%s, err:%s', current_file, e)
+            logging.error('transport file to onedrive failed,file:%s, err:%s', current_file, e)
 
 
 def main():
-    log_format = '%(asctime)-15s\tThread info: %(threadName)s %(message)s'
+    log_format = '%(asctime)-15s\t %(message)s'
     logging.basicConfig(level=logging.INFO, format=log_format, datefmt='%Y/%m/%d %H:%M:%S')
     if len(sys.argv) != 2:
         logging.error('invalid params %s', sys.argv)
@@ -211,6 +225,10 @@ def main():
                 raise ValueError('config error')
         baiduApi = BaiduAPI(baiduConfig, update_token)
         baidu_to_onedrive(baiduApi, api, drive)
+
+
+class TimeOut(Exception):
+    pass
 
 
 if __name__ == '__main__':
