@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import re
 import sys
 import time
 from datetime import datetime
@@ -16,6 +17,7 @@ from utils import decrypt, encrypt, extract_files
 TIME_FOAMAT = '/%Y/%m/%d/%H/'
 TMP = Path(__file__).parent / 'tmp'
 TMP.mkdir(exist_ok=True)
+REGEX = re.compile('[\\|:"<>?#$%^&*]')
 
 
 def get_users(api: GraphAPI):
@@ -136,7 +138,8 @@ def get_next_file(baiduApi: BaiduAPI, graphApi: GraphAPI, drive: str) -> dict:
         file_list['next_page'] = page + 1
     logging.info('total list: %d', len(file_list['list']))
     current_file = file_list['list'].pop()
-    current_file['upload_url'] = graphApi.create_upload_session(f'root:{current_file["path"]}:', drive_id=drive)
+    path = REGEX.sub('', current_file["path"])
+    current_file['upload_url'] = graphApi.create_upload_session(f'root:{path}:', drive_id=drive)
     graphApi.upload_content(json.dumps(file_list), drive_id=drive, file_path='root:/baidu_file_list.txt:')
     graphApi.upload_content(json.dumps(current_file), drive_id=drive, file_path='root:/baidu_current_file.txt:')
     return current_file
@@ -152,7 +155,7 @@ def transport_file(baiduApi: BaiduAPI, fs: dict, next_byte: int, start_time: flo
             logging.error('upload failed')
             raise ValueError(f'upload failed, code:{upload_res.status_code}, response:{upload_res.text}')
         check_time(start_time, 13800)
-    logging.info('file %s finished', fs['path'])
+    logging.info('file %s finished, size: %d', fs['server_filename'], fs['size'])
 
 
 def check_time(start_time: float, diff: float):
