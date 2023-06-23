@@ -108,16 +108,15 @@ class BaiduAPI:
                              },
                              params=self._token_params) for c in range(concurrency) if i + 1310720 * c < size
                 ]
-                g = asyncio.gather(*tasks, return_exceptions=True)
-                for res in await g:
+                for res in await asyncio.gather(*tasks, return_exceptions=True):
                     if isinstance(res, Exception):
                         logging.error('download failed, err:%s', res)
-                        g.cancel()
+                        await queue.put((True, None, None))
                         raise res
                     if res.status >= 400:
                         logging.error('download failed')
                         text = await res.text()
-                        g.cancel()
+                        await queue.put((True, None, None))
                         raise RequestError(res.status, text)
                     data = await res.read()
                     await queue.put((False, res.headers, data))

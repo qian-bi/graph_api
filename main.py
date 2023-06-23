@@ -183,12 +183,10 @@ async def baidu_to_onedrive(baiduApi: BaiduAPI, graphApi: GraphAPI, drive: str):
             if current_file is None:
                 return
             logging.info('transport file: %s', current_file['path'])
-            g = asyncio.gather(baiduApi.get_file_content(queue, current_file['fs_id'], next_byte),
-                               transport_file(queue, current_file, start_time),
-                               return_exceptions=True)
-            for r in await g:
+            for r in await asyncio.gather(baiduApi.get_file_content(queue, current_file['fs_id'], next_byte),
+                                          transport_file(queue, current_file, start_time),
+                                          return_exceptions=True):
                 if isinstance(r, Exception):
-                    g.cancel()
                     raise r
         except TimeOut:
             return
