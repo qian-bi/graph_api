@@ -364,3 +364,21 @@ _CONTENT_MAP = {
     '.apk': 'application/vnd.android.package-archive',
     '.xap': 'application/x-silverlight-app'
 }
+
+
+class TimeOut(Exception):
+    pass
+
+
+class RequestError(Exception):
+
+    def __init__(self, code: int, resp: str = '', name: str = '', msg: str = ''):
+        self.code = code
+        self.resp = resp
+        self.name = name
+        self.msg = msg or 'request failed'
+
+    def __str__(self):
+        if self.name:
+            return f'{self.msg}, api:{self.name}, code:{self.code}, response:{self.resp}'
+        return f'{self.msg}, code:{self.code}, response:{self.resp}'

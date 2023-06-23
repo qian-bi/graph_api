@@ -1,11 +1,14 @@
+import asyncio
 import json
+import logging
 from configparser import SectionProxy
 from functools import partial
 from pathlib import Path
 
+import aiohttp
 import requests
 
-from common import API, APIEnum
+from common import API, APIEnum, RequestError
 from utils import ThreadDownload
 
 BaiduHost = partial(API, host='https://pan.baidu.com')
@@ -56,7 +59,7 @@ class BaiduAPI:
             self.refresh_token()
             return self._request_baidu(api, params_, data_, json_, headers, **kwargs)
         if res.status_code >= 400:
-            raise ValueError(f'request failed, api:{api.name}, code:{res.status_code}, response:{res.text}')
+            raise RequestError(res.status_code, res.text, api.name)
         if res.headers.get('content-type', '').startswith('application/json'):
             return json.loads(res.content)
         return res.content
@@ -91,13 +94,32 @@ class BaiduAPI:
         size = filemeta['size']
         ThreadDownload(size, url, file, headers=self._header, params=self._token_params).run()
 
-    def get_file_content(self, fs_id: int, next_byte: int):
+    async def get_file_content(self, queue: asyncio.Queue, fs_id: int, next_byte: int, concurrency: int = 3):
         filemeta = self.get_filemeta(fs_id)
         url = filemeta['dlink']
         size = filemeta['size']
-        for i in range(next_byte, size, 1310720):
-            headers = {'Range': f'bytes={i}-{i+1310719}', 'User-Agent': 'pan.baidu.com'}
-            res = self._session.get(url, headers=headers, params=self._token_params)
-            if res.status_code >= 400:
-                raise ValueError(f'request failed, code:{res.status_code}, response:{res.text}')
-            yield res
+        async with aiohttp.ClientSession() as sess:
+            for i in range(next_byte, size, 1310720 * concurrency):
+                tasks = [
+                    sess.get(url,
+                             headers={
+                                 'Range': f'bytes={i+1310720*c}-{i+1310720*c+1310719}',
+                                 'User-Agent': 'pan.baidu.com'
+                             },
+                             params=self._token_params) for c in range(concurrency) if i + 1310720 * c < size
+                ]
+                g = asyncio.gather(*tasks, return_exceptions=True)
+                for res in await g:
+                    if isinstance(res, Exception):
+                        logging.error('download failed, err:%s', res)
+                        g.cancel()
+                        raise res
+                    if res.status >= 400:
+                        logging.error('download failed')
+                        text = await res.text()
+                        g.cancel()
+                        raise RequestError(res.status, text)
+                    data = await res.read()
+                    await queue.put((False, res.headers, data))
+                    res.close()
+        await queue.put((True, None, None))

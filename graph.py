@@ -6,7 +6,7 @@ from pathlib import Path
 import msal
 import requests
 
-from common import API, APIEnum, get_content
+from common import API, APIEnum, RequestError, get_content
 
 GraphHost = partial(API, host='https://graph.microsoft.com/v1.0')
 
@@ -75,7 +75,7 @@ class GraphAPI:
             self.get_access_token()
             return self._request_graph(api, data_, json_, headers, **kwargs)
         if res.status_code >= 400:
-            raise ValueError(f'request failed, api:{api.name}, code:{res.status_code}, response:{res.text}')
+            raise RequestError(res.status_code, res.text, api.name)
         if res.headers.get('content-type', '').startswith('application/json'):
             return json.loads(res.content)
         return res.content
@@ -117,7 +117,7 @@ class GraphAPI:
         file_item = self.get_drive_item(drive_id, item, item_path)
         res = self._session.get(file_item['@microsoft.graph.downloadUrl'])
         if res.status_code >= 400:
-            raise ValueError(f'get item failed, code:{res.status_code}, response:{res.text}')
+            raise RequestError(res.status_code, res.text, msg='get item failed')
         if res.content.startswith((b'[', b'{')):
             return json.loads(res.content)
         return res.content
@@ -172,7 +172,7 @@ class GraphAPI:
                                                    'Content-Range': f'bytes {i}-{i+len(data)-1}/{file_size}'
                                                })
                 if upload_res.status_code >= 400:
-                    raise ValueError(f'upload failed, code:{upload_res.status_code}, response:{upload_res.text}')
+                    raise RequestError(upload_res.status_code, upload_res.text, msg='upload failed')
                 i += len(data)
 
     def upload_content(self,

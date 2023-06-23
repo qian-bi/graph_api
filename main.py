@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import os
@@ -8,9 +9,11 @@ from datetime import datetime
 from pathlib import Path
 from typing import List, Tuple
 
+import aiohttp
 import requests
 
 from baidu import BaiduAPI
+from common import RequestError, TimeOut
 from graph import GraphAPI
 from utils import decrypt, encrypt, extract_files
 
@@ -51,7 +54,7 @@ def download_files(api: GraphAPI, user_id: str):
                 logging.info('file_name: %s', d['name'])
                 res = requests.get(d['@microsoft.graph.downloadUrl'])
                 if res.status_code >= 400:
-                    raise ValueError(f'get file failed, code:{res.status_code}, response:{res.text}')
+                    raise RequestError(res.status_code, res.text, msg='get file failed')
                 with open(TMP / d["name"], 'wb') as f:
                     f.write(res.content)
 
@@ -122,7 +125,7 @@ def get_current_file(graphApi: GraphAPI, drive: str) -> Tuple[dict, int]:
         return None, 0
     if res.status_code >= 400:
         logging.error('failed to check file %s', current_file['server_filename'])
-        raise ValueError(f'request failed, code:{res.status_code}, response:{res.text}')
+        raise RequestError(res.status_code, res.text)
     data = json.loads(res.content)
     next_range = data['nextExpectedRanges'][0]
     return current_file, int(next_range[0:next_range.index('-')])
@@ -145,17 +148,22 @@ def get_next_file(baiduApi: BaiduAPI, graphApi: GraphAPI, drive: str) -> dict:
     return current_file
 
 
-def transport_file(baiduApi: BaiduAPI, fs: dict, next_byte: int, start_time: float):
-    headers = {}
-    for res in baiduApi.get_file_content(fs['fs_id'], next_byte):
-        headers['Content-Length'] = res.headers['Content-Length']
-        headers['Content-Range'] = res.headers['Content-Range']
-        upload_res = requests.put(fs['upload_url'], data=res.content, headers=headers)
-        if upload_res.status_code >= 400:
-            logging.error('upload failed')
-            raise ValueError(f'upload failed, code:{upload_res.status_code}, response:{upload_res.text}')
-        check_time(start_time, 13800)
-    logging.info('file %s finished, size: %d', fs['server_filename'], fs['size'])
+async def transport_file(queue: asyncio.Queue, fs: dict, start_time: float):
+    upload_headers = {}
+    async with aiohttp.ClientSession() as sess:
+        while True:
+            check_time(start_time, 13800)
+            finished, resp_headers, data = await queue.get()
+            if finished:
+                break
+            upload_headers['Content-Length'] = resp_headers['Content-Length']
+            upload_headers['Content-Range'] = resp_headers['Content-Range']
+            async with sess.put(fs['upload_url'], data=data, headers=upload_headers) as upload_res:
+                if upload_res.status >= 400:
+                    logging.error('upload failed')
+                    text = await upload_res.text()
+                    raise RequestError(upload_res.status, text, msg='upload failed')
+        logging.info('file %s finished, size: %d', fs['server_filename'], fs['size'])
 
 
 def check_time(start_time: float, diff: float):
@@ -163,8 +171,9 @@ def check_time(start_time: float, diff: float):
         raise TimeOut()
 
 
-def baidu_to_onedrive(baiduApi: BaiduAPI, graphApi: GraphAPI, drive: str):
+async def baidu_to_onedrive(baiduApi: BaiduAPI, graphApi: GraphAPI, drive: str):
     start_time = time.time()
+    queue = asyncio.Queue(maxsize=3)
     while True:
         try:
             check_time(start_time, 13800)
@@ -174,7 +183,13 @@ def baidu_to_onedrive(baiduApi: BaiduAPI, graphApi: GraphAPI, drive: str):
             if current_file is None:
                 return
             logging.info('transport file: %s', current_file['path'])
-            transport_file(baiduApi, current_file, next_byte, start_time)
+            g = asyncio.gather(baiduApi.get_file_content(queue, current_file['fs_id'], next_byte),
+                               transport_file(queue, current_file, start_time),
+                               return_exceptions=True)
+            for r in await g:
+                if isinstance(r, Exception):
+                    g.cancel()
+                    raise r
         except TimeOut:
             return
         except Exception as e:
@@ -217,7 +232,7 @@ def main():
             token_file = api.get_item_content(drive, item_path='refresh_token.txt')
             refresh_token = decrypt(os.getenv('refresh_token_key'), os.getenv('refresh_token_associated_data'),
                                     **token_file)
-        except ValueError as e:
+        except RequestError as e:
             logging.error('update token failed, err: %s', e)
             return
 
@@ -230,11 +245,7 @@ def main():
             if not v:
                 raise ValueError('config error')
         baiduApi = BaiduAPI(baiduConfig, update_token)
-        baidu_to_onedrive(baiduApi, api, drive)
-
-
-class TimeOut(Exception):
-    pass
+        asyncio.run(baidu_to_onedrive(baiduApi, api, drive))
 
 
 if __name__ == '__main__':
