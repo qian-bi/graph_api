@@ -366,7 +366,7 @@ _CONTENT_MAP = {
 }
 
 
-class TimeOut(Exception):
+class TimeOutError(Exception):
     pass
 
 

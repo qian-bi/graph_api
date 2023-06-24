@@ -13,7 +13,7 @@ import aiohttp
 import requests
 
 from baidu import BaiduAPI
-from common import RequestError, TimeOut
+from common import RequestError, TimeOutError
 from graph import GraphAPI
 from utils import decrypt, encrypt, extract_files
 
@@ -21,6 +21,7 @@ TIME_FOAMAT = '/%Y/%m/%d/%H/'
 TMP = Path(__file__).parent / 'tmp'
 TMP.mkdir(exist_ok=True)
 REGEX = re.compile('[\\|:"<>?#$%^&*]')
+TIMEOUT = 7200
 
 
 def get_users(api: GraphAPI):
@@ -143,52 +144,60 @@ def get_next_file(baiduApi: BaiduAPI, graphApi: GraphAPI, drive: str) -> dict:
     current_file = file_list['list'].pop()
     path = REGEX.sub('', current_file["path"])
     current_file['upload_url'] = graphApi.create_upload_session(f'root:{path}:', drive_id=drive)
-    graphApi.upload_content(json.dumps(file_list), drive_id=drive, file_path='root:/baidu_file_list.txt:')
+    current_file['download_start_time'] = time.time()
     graphApi.upload_content(json.dumps(current_file), drive_id=drive, file_path='root:/baidu_current_file.txt:')
+    graphApi.upload_content(json.dumps(file_list), drive_id=drive, file_path='root:/baidu_file_list.txt:')
     return current_file
 
 
-async def transport_file(queue: asyncio.Queue, fs: dict, start_time: float):
+def put_nowait(queue: asyncio.Queue, item):
+    try:
+        queue.put_nowait(item)
+    except asyncio.QueueFull:
+        pass
+
+
+async def transport_file(queue: asyncio.Queue, exit_queue: asyncio.Queue, start_time: float):
     upload_headers = {}
     async with aiohttp.ClientSession() as sess:
         while True:
-            check_time(start_time, 13800)
-            finished, resp_headers, data = await queue.get()
-            if finished:
-                break
-            upload_headers['Content-Length'] = resp_headers['Content-Length']
-            upload_headers['Content-Range'] = resp_headers['Content-Range']
-            async with sess.put(fs['upload_url'], data=data, headers=upload_headers) as upload_res:
-                if upload_res.status >= 400:
-                    logging.error('upload failed')
-                    text = await upload_res.text()
-                    raise RequestError(upload_res.status, text, msg='upload failed')
-        logging.info('file %s finished, size: %d', fs['server_filename'], fs['size'])
-
-
-def check_time(start_time: float, diff: float):
-    if time.time() - start_time >= diff:
-        raise TimeOut()
+            if time.time() - start_time >= TIMEOUT:
+                put_nowait(exit_queue, 0)
+                return
+            try:
+                finished, fs, resp_headers, data = await queue.get()
+                if finished:
+                    logging.info('file %s finished, size: %d, avg_rate: %.2f', fs['server_filename'], fs['size'],
+                                 fs['size'] / (time.time() - fs['download_start_time']) / 1024)
+                    continue
+                upload_headers['Content-Length'] = resp_headers['Content-Length']
+                upload_headers['Content-Range'] = resp_headers['Content-Range']
+                async with sess.put(fs['upload_url'], data=data, headers=upload_headers) as upload_res:
+                    if upload_res.status >= 400:
+                        logging.error('upload failed, code:%d, resp:%s', upload_res.status, await upload_res.text())
+                        put_nowait(exit_queue, 0)
+            except Exception as e:
+                put_nowait(exit_queue, 0)
+                logging.error('upload failed, err:%s', e)
 
 
 async def baidu_to_onedrive(baiduApi: BaiduAPI, graphApi: GraphAPI, drive: str):
     start_time = time.time()
     queue = asyncio.Queue(maxsize=3)
+    exit_queue = asyncio.Queue(maxsize=1)
+    asyncio.create_task(transport_file(queue, exit_queue, start_time))
     while True:
         try:
-            check_time(start_time, 13800)
+            if time.time() - start_time >= TIMEOUT:
+                return
             current_file, next_byte = get_current_file(graphApi, drive)
             if current_file is None:
                 current_file = get_next_file(baiduApi, graphApi, drive)
             if current_file is None:
                 return
             logging.info('transport file: %s', current_file['path'])
-            for r in await asyncio.gather(baiduApi.get_file_content(queue, current_file['fs_id'], next_byte),
-                                          transport_file(queue, current_file, start_time),
-                                          return_exceptions=True):
-                if isinstance(r, Exception):
-                    raise r
-        except TimeOut:
+            await baiduApi.get_file_content(queue, current_file, next_byte, exit_queue)
+        except TimeOutError:
             return
         except Exception as e:
             logging.error('transport file to onedrive failed,file:%s, err:%s', current_file, e)

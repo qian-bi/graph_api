@@ -94,12 +94,24 @@ class BaiduAPI:
         size = filemeta['size']
         ThreadDownload(size, url, file, headers=self._header, params=self._token_params).run()
 
-    async def get_file_content(self, queue: asyncio.Queue, fs_id: int, next_byte: int, concurrency: int = 3):
-        filemeta = self.get_filemeta(fs_id)
+    async def get_file_content(self,
+                               queue: asyncio.Queue,
+                               fs: dict,
+                               next_byte: int,
+                               exit_queue: asyncio.Queue,
+                               concurrency: int = 3):
+        filemeta = self.get_filemeta(fs['fs_id'])
         url = filemeta['dlink']
         size = filemeta['size']
         async with aiohttp.ClientSession() as sess:
             for i in range(next_byte, size, 1310720 * concurrency):
+                try:
+                    exit_queue.get_nowait()
+                    return
+                except asyncio.QueueEmpty:
+                    pass
+                if (i - next_byte) % 78643200 == 0:
+                    logging.info('%s downloading %.2f%%', fs['server_filename'], i / size * 100)
                 tasks = [
                     sess.get(url,
                              headers={
@@ -111,14 +123,12 @@ class BaiduAPI:
                 for res in await asyncio.gather(*tasks, return_exceptions=True):
                     if isinstance(res, Exception):
                         logging.error('download failed, err:%s', res)
-                        await queue.put((True, None, None))
                         raise res
                     if res.status >= 400:
                         logging.error('download failed')
                         text = await res.text()
-                        await queue.put((True, None, None))
                         raise RequestError(res.status, text)
                     data = await res.read()
-                    await queue.put((False, res.headers, data))
+                    await queue.put((False, fs, res.headers, data))
                     res.close()
-        await queue.put((True, None, None))
+        await queue.put((True, fs, None, None))
