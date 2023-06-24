@@ -141,7 +141,11 @@ def get_next_file(baiduApi: BaiduAPI, graphApi: GraphAPI, drive: str) -> dict:
         file_list = baiduApi.search_files('.', '/', page=page, recursion=1)
         file_list['next_page'] = page + 1
     logging.info('total list: %d', len(file_list['list']))
-    current_file = file_list['list'].pop()
+    current_file = {'isdir': 1}
+    while current_file['isdir']:
+        if not file_list['list']:
+            return get_next_file(baiduApi, graphApi, drive)
+        current_file = file_list['list'].pop()
     path = REGEX.sub('', current_file["path"])
     current_file['upload_url'] = graphApi.create_upload_session(f'root:{path}:', drive_id=drive)
     current_file['download_start_time'] = time.time()
