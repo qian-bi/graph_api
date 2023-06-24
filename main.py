@@ -21,7 +21,7 @@ TIME_FOAMAT = '/%Y/%m/%d/%H/'
 TMP = Path(__file__).parent / 'tmp'
 TMP.mkdir(exist_ok=True)
 REGEX = re.compile('[\\|:"<>?#$%^&*]')
-TIMEOUT = 7200
+TIMEOUT = 13800
 
 
 def get_users(api: GraphAPI):
@@ -183,7 +183,7 @@ async def transport_file(queue: asyncio.Queue, exit_queue: asyncio.Queue, start_
 
 async def baidu_to_onedrive(baiduApi: BaiduAPI, graphApi: GraphAPI, drive: str):
     start_time = time.time()
-    queue = asyncio.Queue(maxsize=3)
+    queue = asyncio.Queue(maxsize=10)
     exit_queue = asyncio.Queue(maxsize=1)
     asyncio.create_task(transport_file(queue, exit_queue, start_time))
     while True:

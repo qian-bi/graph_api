@@ -111,7 +111,8 @@ class BaiduAPI:
                 except asyncio.QueueEmpty:
                     pass
                 if (i - next_byte) % 78643200 == 0:
-                    logging.info('%s downloading %.2f%%', fs['server_filename'], i / size * 100)
+                    logging.info('%s downloading %.2f%%, queue size: %d', fs['server_filename'], i / size * 100,
+                                 queue.qsize())
                 tasks = [
                     sess.get(url,
                              headers={
