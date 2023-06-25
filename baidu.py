@@ -94,42 +94,31 @@ class BaiduAPI:
         size = filemeta['size']
         ThreadDownload(size, url, file, headers=self._header, params=self._token_params).run()
 
-    async def get_file_content(self,
-                               queue: asyncio.Queue,
-                               fs: dict,
-                               next_byte: int,
-                               exit_queue: asyncio.Queue,
-                               concurrency: int = 3):
+    async def get_file_content(self, queue: asyncio.Queue, fs: dict, next_byte: int, exit_queue: asyncio.Queue):
         filemeta = self.get_filemeta(fs['fs_id'])
         url = filemeta['dlink']
         size = filemeta['size']
         async with aiohttp.ClientSession() as sess:
-            for i in range(next_byte, size, 1310720 * concurrency):
+            for i in range(next_byte, size, 1310720):
                 try:
                     exit_queue.get_nowait()
-                    return
+                    logging.info('receive exit')
+                    raise RequestError(0)
                 except asyncio.QueueEmpty:
                     pass
                 if (i - next_byte) % 78643200 == 0:
                     logging.info('%s downloading %.2f%%, queue size: %d', fs['server_filename'], i / size * 100,
                                  queue.qsize())
-                tasks = [
-                    sess.get(url,
-                             headers={
-                                 'Range': f'bytes={i+1310720*c}-{i+1310720*c+1310719}',
-                                 'User-Agent': 'pan.baidu.com'
-                             },
-                             params=self._token_params) for c in range(concurrency) if i + 1310720 * c < size
-                ]
-                for res in await asyncio.gather(*tasks, return_exceptions=True):
-                    if isinstance(res, Exception):
-                        logging.error('download failed, err:%s', res)
-                        raise res
+                async with sess.get(url,
+                                    headers={
+                                        'Range': f'bytes={i}-{i+1310719}',
+                                        'User-Agent': 'pan.baidu.com'
+                                    },
+                                    params=self._token_params) as res:
                     if res.status >= 400:
-                        logging.error('download failed')
                         text = await res.text()
+                        logging.error('download failed, status:%d, resp:%s', res.status, text)
                         raise RequestError(res.status, text)
                     data = await res.read()
                     await queue.put((False, fs, res.headers, data))
-                    res.close()
         await queue.put((True, fs, None, None))

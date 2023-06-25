@@ -167,6 +167,7 @@ async def transport_file(queue: asyncio.Queue, exit_queue: asyncio.Queue, start_
         while True:
             if time.time() - start_time >= TIMEOUT:
                 put_nowait(exit_queue, 0)
+                logging.info('exit upload')
                 return
             try:
                 finished, fs, resp_headers, data = await queue.get()
@@ -193,6 +194,7 @@ async def baidu_to_onedrive(baiduApi: BaiduAPI, graphApi: GraphAPI, drive: str):
     while True:
         try:
             if time.time() - start_time >= TIMEOUT:
+                logging.info('exit transport')
                 return
             current_file, next_byte = get_current_file(graphApi, drive)
             if current_file is None:
@@ -205,7 +207,7 @@ async def baidu_to_onedrive(baiduApi: BaiduAPI, graphApi: GraphAPI, drive: str):
             return
         except Exception as e:
             logging.error('transport file to onedrive failed,file:%s, err:%s', current_file, e)
-            time.sleep(60)
+            time.sleep(300)
 
 
 def main():
