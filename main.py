@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import os
+import random
 import re
 import sys
 import time
@@ -203,11 +204,12 @@ async def baidu_to_onedrive(baiduApi: BaiduAPI, graphApi: GraphAPI, drive: str):
                 return
             logging.info('transport file: %s', current_file['path'])
             await baiduApi.get_file_content(queue, current_file, next_byte, exit_queue)
+            await asyncio.sleep(random.randint(200, 300))
         except TimeOutError:
             return
         except Exception as e:
             logging.error('transport file to onedrive failed,file:%s, err:%s', current_file, e)
-            time.sleep(300)
+            await asyncio.sleep(random.randint(200, 300))
 
 
 def main():
