@@ -22,7 +22,7 @@ TIME_FOAMAT = '/%Y/%m/%d/%H/'
 TMP = Path(__file__).parent / 'tmp'
 TMP.mkdir(exist_ok=True)
 REGEX = re.compile('[\\|:"<>?#$%^&*]')
-TIMEOUT = 13800
+TIMEOUT = 14400
 
 
 def get_users(api: GraphAPI):
@@ -204,15 +204,15 @@ async def baidu_to_onedrive(baiduApi: BaiduAPI, graphApi: GraphAPI, drive: str):
                 return
             logging.info('transport file: %s', current_file['path'])
             await baiduApi.get_file_content(queue, current_file, next_byte, exit_queue)
-            await asyncio.sleep(random.randint(200, 300))
         except TimeOutError:
             return
         except Exception as e:
             logging.error('transport file to onedrive failed,file:%s, err:%s', current_file, e)
-            await asyncio.sleep(random.randint(200, 300))
+        await asyncio.sleep(random.randint(200, 300))
 
 
 def main():
+    time.sleep(random.randint(600, 1800))
     log_format = '%(asctime)-15s\t|\t%(levelname)s\t|\t%(filename)s:%(lineno)d\t|\t %(message)s'
     logging.basicConfig(level=logging.INFO, format=log_format, datefmt='%Y/%m/%d %H:%M:%S')
     if len(sys.argv) != 2:
