@@ -125,6 +125,10 @@ def get_current_file(graphApi: GraphAPI, drive: str) -> Tuple[dict, int]:
     if res.status_code == 404:
         logging.info('current file finished')
         return None, 0
+    if res.status_code == 401:
+        logging.warn('unauthorized upload for %s, restart', current_file['server_filename'])
+        upadte_current_file(graphApi, drive, current_file)
+        return current_file, 0
     if res.status_code >= 400:
         logging.error('failed to check file %s', current_file['server_filename'])
         raise RequestError(res.status_code, res.text)
@@ -147,12 +151,16 @@ def get_next_file(baiduApi: BaiduAPI, graphApi: GraphAPI, drive: str) -> dict:
         if not file_list['list']:
             return get_next_file(baiduApi, graphApi, drive)
         current_file = file_list['list'].pop()
+    upadte_current_file(graphApi, drive, current_file)
+    graphApi.upload_content(json.dumps(file_list), drive_id=drive, file_path='root:/baidu_file_list.txt:')
+    return current_file
+
+
+def upadte_current_file(graphApi: GraphAPI, drive: str, current_file: dict) -> None:
     path = REGEX.sub('', current_file["path"])
     current_file['upload_url'] = graphApi.create_upload_session(f'root:{path}:', drive_id=drive)
     current_file['download_start_time'] = time.time()
     graphApi.upload_content(json.dumps(current_file), drive_id=drive, file_path='root:/baidu_current_file.txt:')
-    graphApi.upload_content(json.dumps(file_list), drive_id=drive, file_path='root:/baidu_file_list.txt:')
-    return current_file
 
 
 def put_nowait(queue: asyncio.Queue, item):
