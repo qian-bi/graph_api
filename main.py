@@ -133,8 +133,12 @@ def get_current_file(graphApi: GraphAPI, drive: str) -> Tuple[dict, int]:
         logging.error('failed to check file %s', current_file['server_filename'])
         raise RequestError(res.status_code, res.text)
     data = json.loads(res.content)
-    next_range = data['nextExpectedRanges'][0]
-    return current_file, int(next_range[0:next_range.index('-')])
+    if len(data['nextExpectedRanges']) == 0:
+        index = 0
+    else:
+        next_range = data['nextExpectedRanges'][0]
+        index = int(next_range[0:next_range.index('-')])
+    return current_file, index
 
 
 def get_next_file(baiduApi: BaiduAPI, graphApi: GraphAPI, drive: str) -> dict:
