@@ -22,7 +22,7 @@ TIME_FOAMAT = '/%Y/%m/%d/%H/'
 TMP = Path(__file__).parent / 'tmp'
 TMP.mkdir(exist_ok=True)
 REGEX = re.compile('[\\|:"<>?#$%^&*]')
-TIMEOUT = 14400
+TIMEOUT = 18000
 
 
 def get_users(api: GraphAPI):
