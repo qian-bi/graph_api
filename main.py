@@ -46,6 +46,12 @@ def get_groups(api: GraphAPI, user_id: str):
         send_mail(api, user_id, [m['mail'] for m in members])
 
 
+def get_applications(api: GraphAPI):
+    for app in api.list_applications():
+        application = api.get_application(app['id'])
+        logging.info('get_applications: %s', application['displayName'])
+
+
 def download_files(api: GraphAPI, user_id: str):
     drive = api.get_drive(user_id)
     logging.info('drive_id: %s', drive)
@@ -244,6 +250,7 @@ def main():
     if job == 'graph_test':
         get_users(api)
         get_groups(api, graphConfig['user_id'])
+        get_applications(api)
         # download_files(api, graphConfig['user_id'])
         # upload_files(api, graphConfig['user_id'])
     elif job == 'baidu_to_onedrive':

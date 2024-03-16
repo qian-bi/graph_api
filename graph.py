@@ -39,6 +39,8 @@ class _GraphURL(APIEnum):
     user_upload_session = GraphHost('upload_session',
                                     '{host}//users/{user_id}/drive/items/{item_id}/createUploadSession',
                                     method='post')
+    list_applications = GraphHost('list_applications', '{host}/applications')
+    get_application = GraphHost('get_application', '{host}/applications/{application_id}')
 
 
 class GraphAPI:
@@ -124,6 +126,12 @@ class GraphAPI:
 
     def send_mail(self, user_id: str, body):
         return self._request_graph(_GraphURL.send_mail, json_=body, user_id=user_id)
+
+    def list_applications(self):
+        return self._request_graph(_GraphURL.list_applications)['value']
+
+    def get_application(self, application_id: str):
+        return self._request_graph(_GraphURL.get_application, application_id=application_id)
 
     def create_upload_session(self, remote_path: str, user_id: str = '', drive_id: str = ''):
         if user_id != '' and drive_id == '':
