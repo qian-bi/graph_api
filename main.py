@@ -244,8 +244,8 @@ def main():
     if job == 'graph_test':
         get_users(api)
         get_groups(api, graphConfig['user_id'])
-        download_files(api, graphConfig['user_id'])
-        upload_files(api, graphConfig['user_id'])
+        # download_files(api, graphConfig['user_id'])
+        # upload_files(api, graphConfig['user_id'])
     elif job == 'baidu_to_onedrive':
         refresh_token = ''
         drive = api.get_drive(graphConfig['user_id'])
