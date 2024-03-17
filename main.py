@@ -41,9 +41,9 @@ def get_groups(api: GraphAPI, user_id: str):
     groups = api.get_groups()
     for g in groups:
         logging.info('group_name: %s', g['displayName'])
-        send_mail(api, user_id, [g['mail']])
+        # send_mail(api, user_id, [g['mail']])
         members = api.get_group_member(g['id'])
-        send_mail(api, user_id, [m['mail'] for m in members])
+        # send_mail(api, user_id, [m['mail'] for m in members])
 
 
 def get_applications(api: GraphAPI):
